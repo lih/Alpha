@@ -1,0 +1,12 @@
+let[ret _nil,
+    cur-depth _ptree-current-depth()]{
+  while _ptree-current-line:> 0 _{
+    decr _ptree-current-line ;
+    when _ptree-current-depth():< cur-depth _{
+      setq _cur-depth _ptree-current-depth()
+      when _[ptree? ptree-current-object()]
+           _ret.push(ptree-current-object().ptree-name)
+    }
+  }
+  ret
+}
