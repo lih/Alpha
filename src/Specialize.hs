@@ -63,6 +63,7 @@ code = [
 
 specialize arch code = fmap (\n -> (n,instr n)) (instrTree 0 nexts)
   where (_,instr,nexts,_) = navigate code            
+        
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
