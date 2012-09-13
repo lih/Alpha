@@ -4,7 +4,7 @@ module Compile.Utils where
 
 import Compile.State as CS
 import qualified Util.Graph as G
-import Util.Misc
+import Util.Prelude
 import Util.Monad
 import Util.State
 import Util.List

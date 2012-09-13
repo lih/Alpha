@@ -1,9 +1,9 @@
-module Util.List(module Data.List,classesBy,nubO) where
+module Util.List(module Data.List,classesBy,nubOrd) where
 
 import Data.List
 
-nubO :: Ord a => [a] -> [a]
-nubO = map head . group . sort
+nubOrd :: Ord a => [a] -> [a]
+nubOrd = map head . group . sort
 
 classesBy :: (a -> a -> Bool) -> [a] -> [[a]]
 classesBy (==) []    = []

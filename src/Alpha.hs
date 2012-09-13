@@ -16,7 +16,7 @@ import qualified Data.ByteString as B
 import Data.Maybe
 import Util.Monad
 import Control.Monad.State
-import Util.Misc
+import Util.Prelude
 -- import Specialize
 import IR
 

@@ -7,7 +7,7 @@ import Compile.Utils
 
 import Compile.State as CS
 import IR
-import Util
+import Util.Prelude
 import Util.ID
 import Util.Graph as G hiding (deleteEdge,deleteNode)
 import Util.State

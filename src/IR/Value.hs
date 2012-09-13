@@ -5,7 +5,7 @@ import Control.Monad.Instances
 import Data.Char
 import Data.List
 import Data.Maybe
-import Util
+import Util.Prelude
 import Util.ID
 
 data ValType = Value | Address | Size | SymID

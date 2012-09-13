@@ -21,7 +21,7 @@ source-repository head
 executable alpha
   build-depends:  base, unix, containers, array, mtl, bytestring, bimap, ghc-prim, directory, filepath, cereal, parsec
   main-is:        Alpha.hs
-  other-modules:  Specialize.Types, Specialize.Architecture, IR.Builtin, IR.Instruction, IR.Value, IR, Serialize, Environment, Compile, Compile.State, Compile.Utils, Util, Syntax.Parse, Translate, Specialize, Util.ID, Util.Monad, Util.TimeLine, Util.List, Util.Misc, Util.Graph, Util.State, Environment.Axiom, Environment.Foreign, Environment.Value, Environment.Context, Syntax, Alpha.Elf, Alpha.Options
+  other-modules:  Specialize.Types, Specialize.Architecture, IR.Builtin, IR.Instruction, IR.Value, IR, Serialize, Environment, Compile, Compile.State, Compile.Utils, Util.Prelude, Syntax.Parse, Translate, Specialize, Util.ID, Util.Monad, Util.TimeLine, Util.List, Util.Graph, Util.State, Environment.Axiom, Environment.Foreign, Environment.Value, Environment.Context, Syntax, Alpha.Elf, Alpha.Options
   hs-source-dirs: src
   c-sources:      src/Alpha/writeElf.c
 

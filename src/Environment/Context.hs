@@ -10,7 +10,8 @@ import Control.Monad.State
 import Util.State
 import Util.ID
 import Util.List
-import Util
+import Util.Monad
+import Util.Prelude
 import Translate
 
 data Context = CE {
