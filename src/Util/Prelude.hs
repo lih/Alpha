@@ -15,7 +15,9 @@ ifThenElse b th el = if b then th else el
 
 swap (a,b) = (b,a)
 
-getFileModTime f = modificationTime $< getFileStatus f
+newerThan f1 f2 = liftM2 (>) (modTime f1) (modTime f2)
+  where modTime f = modificationTime $< getFileStatus f
+
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

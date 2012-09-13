@@ -37,32 +37,32 @@ printVersion = putStrLn "Alpha version 1.0"
 newtype Str = Str String
 instance Show Str where show (Str s) = s
 
-doCompile b s = if b then void $ compileFile "/dev/stdin" (runes s)
-                else mapM_ compileRune (runes s)
+doCompile interactive opts = if interactive then void $ compileFile "/dev/stdin" (runes opts)
+                             else mapM_ compileRune (runes opts)
   where 
-    runeFile rune = runeDir s</>rune<.>"r"
-    findScroll rune = findM fileExist (concat [[base,base<.>"a"] | dir <- scrollDirs s, let base = dir</>rune])
+    runeFile rune = runeDir opts</>rune<.>"r"
+    findScroll rune = findM fileExist (concat [[base,base<.>"a"] | dir <- scrollDirs opts, let base = dir</>rune])
     compileFile src runes = withEnv defaultEnv $ (>>E.getEnv) $ do 
       str <- readFile src
       let sTree = concat $ parseAlpha src str
       mapM_ doImport runes
       code <- mapM compileExpr sTree
       stateEnv $ modify (\e -> e { load = foldr concatCode [] code })
-    compileRune rune = do
-      src <- fromMaybe (error$"Couldn't find source file for rune "++rune) $< findScroll rune
-      let obj = runeFile rune
-      ifM (andM [fileExist $ runeFile rune,liftM2 (<) (getFileModTime src) (getFileModTime obj)]) 
-          (putStrLn $ "Rune "++rune++" already compiled. Skipping.") $ do 
-        env <- compileFile src []
+    compileRune name = do
+      scroll <- fromMaybe (error$"Couldn't find scroll file for rune "++name) $< findScroll name
+      let rune = runeFile name
+      ifM (fileExist rune <&&> (rune `newerThan` scroll)) 
+          (putStrLn $ "Rune "++name++" already compiled. Skipping.") $ do 
+        env <- compileFile scroll []
         print env
-        createDirectoryIfMissing True (dropFileName obj)
-        B.writeFile obj (encode $ exportContext env)
+        createDirectoryIfMissing True (dropFileName rune)
+        B.writeFile rune (encode $ exportContext env)
     compileExpr expr = do
       (expr',env) <- envCast expr $< E.getEnv
-      (code,env') <- compile env Nothing $< doTransform expr'
+      (code,cenv) <- compile env Nothing $< doTransform expr'
       print expr
-      setEnv (context env')
-      mapM_ doImport (imports env')
+      setEnv (context cenv)
+      mapM_ doImport (imports cenv)
       return code
     doImport im = do 
       e <- E.getEnv

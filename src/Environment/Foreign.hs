@@ -23,7 +23,7 @@ defaultEnv = fromList $ [
   ("->"     ,Axiom XReturn),
   ("do"     ,Axiom XDo),
   
-  ("lang"   ,Axiom XLang),
+  ("rune"   ,Axiom XRune),
   ("verb"   ,Axiom XVerb),
   ("noun"   ,Axiom XNoun),        
             

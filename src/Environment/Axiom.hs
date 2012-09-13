@@ -2,7 +2,7 @@ module Environment.Axiom where
 
 data Axiom = XAlter | XBind 
            | XReturn | XRestart | XChoose | XDo
-           | XLang | XVerb | XNoun
+           | XRune | XVerb | XNoun
            | XID | XAddr | XSize  
            deriving Show
 

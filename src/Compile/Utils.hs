@@ -112,7 +112,7 @@ annotate depG = newdepG
     newdepG = mapNodes depCalc depG
     depCalc (depCalc' -> (a,b)) i = ANode a b i
     depCalc' (flip G.getContext depG -> c)
-      | any isBackEdge ||| null $ inEdges c = (1,1)
+      | any isBackEdge <||> null $ inEdges c = (1,1)
       | otherwise = (1+maximum a, maximum $ zipWith (+) [0..] (reverse $ sort b))
       where (a,b) = unzip [(weight t,erNum t) 
                           | n' <- prevNodes c

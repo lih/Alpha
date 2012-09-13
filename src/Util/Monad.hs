@@ -1,5 +1,5 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Util.Monad (module Control.Monad,($<),(>$),(>$<),(|||),ifM,andM,findM,traverseM) where
+module Util.Monad (module Control.Monad,($<),(>$),(>$<),(<&&>),(<||>),ifM,findM,traverseM) where
 
 import Control.Monad
 import Data.Traversable
@@ -12,11 +12,9 @@ import Control.Applicative
 mf >$ x = mf >>= \f -> return (f x)
 (>$<) = ap
           
-(|||) = liftM2 (||)
-        
 ifM b th el = b >>= \b -> if b then th else el
-andM l = foldr fun (return True) l
-  where fun x ret = ifM x ret (return False)
+a <&&> b = ifM a b (return False)
+a <||> b = ifM a (return True) b
 
 findM p l = foldr fun (return Nothing) l
   where fun x ret = ifM (p x) (return $ Just x) ret

@@ -35,14 +35,14 @@ options = [
   Option ['S'] ["scroll-dir"] (ReqArg Scroll "DIR") 
   "adds DIR to the list of directories searched for scrolls",
   Option ['R'] ["rune-dir"] (ReqArg Rune "DIR") 
-  "casts all runes in DIR instead of the current directory",
+  "casts all runes in DIR (default '.')",
   sep,
   Option ['s'] ["spell-file"] (ReqArg Spell "FILE") 
   "writes spell into FILE (default is '/dev/null')",
   Option ['a'] ["architecture"] (ReqArg (SpellArch . str2arch) "ARCH") 
   $ "specializes for ARCH instead of the local architecture (ARCH is one of "++foldr glue "" (tails archNames)++")"
   ]
-  where str2arch s = fromJust $ lookup s $ zip archNames architectures
+  where str2arch s = fromMaybe (error $ "Invalid architecture name "++s) $ lookup s $ zip archNames architectures
         archNames = map archName architectures
         glue [a] _ = a
         glue [a,_] t = a++" or "++t
@@ -50,6 +50,8 @@ options = [
         sep = Option [] [] undefined "-----------------"
 helpMsg = usageInfo "Usage: Alpha <options> <files>" options
 
+defaultSettings mods = Settings (Compile False) ["."] "." "/dev/null" hostArch mods
+getSettings [] = Right $ (defaultSettings []) { action = PrintHelp }
 getSettings args = case getOpt Permute options args of
   (opts,mods,[]) -> Right $ foldl handleOpt (defaultSettings mods) opts
   (_,_,err) -> Left $ helpMsg ++ concatMap ("\n"++) err
@@ -60,7 +62,7 @@ getSettings args = case getOpt Permute options args of
         handleOpt s (Spell f)     = s { spellFile = f }
         handleOpt s (Rune f)      = s { runeDir = f }
         handleOpt s (SpellArch a) = s { outputArch = a }
-        defaultSettings mods = Settings (Compile False) ["."] "." "/dev/null" hostArch mods
+
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

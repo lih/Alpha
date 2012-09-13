@@ -104,7 +104,7 @@ compileAxiom XNoun dest [name,init] = do
   modifyF envF $ exportSymVal sym (Noun ret code)
   compile' dest (Symbol sym)
   
-compileAxiom XLang _ [Symbol s] = do
+compileAxiom XRune _ [Symbol s] = do
   getSymName s >>= maybe (return()) (modify . (\n e -> e { imports = n:imports e }))
   nullCode
 
