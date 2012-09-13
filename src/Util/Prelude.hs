@@ -1,28 +1,21 @@
-module Util.Misc where
+{-# LANGUAGE NoMonomorphismRestriction #-}
+module Util.Prelude where
 
 import System.Posix.Files
-import Data.Traversable
-import Control.Applicative
-import Control.Monad
-import Data.List (group,sort,partition)
 import Data.Maybe
 import Debug.Trace
 import Util.Monad
-
-(|||)       :: (a -> Bool) -> (a -> Bool) -> a -> Bool
-
-p ||| p' = \x -> p x || p' x
-          
-traverseM f = unwrapMonad . traverse (WrapMonad . f)
 
 debug x = traceShow x x
 
 maybeToEither = maybe (Left undefined) Right
 eitherToMaybe = either (const Nothing) Just
 
-getFileModTime f = modificationTime $< getFileStatus f
+ifThenElse b th el = if b then th else el
 
 swap (a,b) = (b,a)
+
+getFileModTime f = modificationTime $< getFileStatus f
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
