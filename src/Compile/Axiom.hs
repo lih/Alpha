@@ -1,4 +1,4 @@
-module Environment.Axiom where
+module Compile.Axiom where
 
 data Axiom = XAlter | XBind 
            | XReturn | XRestart | XChoose | XDo

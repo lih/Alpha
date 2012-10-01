@@ -3,7 +3,7 @@ module Environment.Value where
 import PCode.Instruction
 import PCode.Builtin
 import PCode.Value
-import Environment.Axiom
+import Compile.Axiom
 import ID
 import qualified Data.Set as S
 import Data.Tree

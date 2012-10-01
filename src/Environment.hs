@@ -1,10 +1,10 @@
 module Environment(
-  module Environment.Axiom,
+  module Compile.Axiom,
   module Environment.Context,
   module Environment.Foreign,
   module Environment.Value) where
 
-import Environment.Axiom
+import Compile.Axiom
 import Environment.Context
 import Environment.Foreign
 import Environment.Value

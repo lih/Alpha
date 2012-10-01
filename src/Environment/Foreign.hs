@@ -6,7 +6,7 @@ module Environment.Foreign(
 
 import System.IO.Unsafe (unsafePerformIO)
 import Data.IORef
-import Environment.Axiom
+import Compile.Axiom
 import Environment.Value
 import Environment.Context
 import PCode
