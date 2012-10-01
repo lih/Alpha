@@ -1,22 +1,23 @@
-{-# LANGUAGE TupleSections, ViewPatterns #-}
+{-# LANGUAGE TupleSections, ViewPatterns, NoMonomorphismRestriction #-}
 
 module Compile.Utils where
 
 import Compile.State as CS
-import qualified Util.Graph as G
-import Util.Prelude
-import Util.Monad
-import Util.State
-import Util.List
+import qualified My.Data.Graph as G
+import My.Prelude
+import My.Control.Monad
+import My.Control.Monad.State
+import My.Data.List
 
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Maybe
-import IR
+import PCode
 import Syntax  
 
 import Debug.Trace
 
+simplify :: Monad m => [Node] -> StateT CompileState m [Node]
 simplify start = do
   oldDep <- getF depGraphF ; purgeAll ; newDep <- getF depGraphF
   return $ concatMap (newStart oldDep newDep) start
@@ -27,7 +28,7 @@ simplify start = do
     purgeNode p n = do
       c <- getContext n              
       if p c then remove (n,c) else return ()
-    isNoop c = case tag c of Instr Noop -> True ; _ -> False
+    isNoop c = tag c==Instr Noop
     isEmptyBranch c = case tag c of 
       BrPart _ -> not (null o) && all p i && all p' o
       _ -> False
@@ -130,5 +131,5 @@ annotate depG = newdepG
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 

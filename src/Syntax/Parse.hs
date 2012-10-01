@@ -2,7 +2,7 @@ module Syntax.Parse (parseAlpha) where
 
 import Syntax
 import Text.ParserCombinators.Parsec hiding (spaces)
-import Util.Monad  
+import My.Control.Monad  
 import Data.Maybe
 
 parseAlpha file s = lazyMany axiom file s
@@ -30,23 +30,23 @@ free e = try $ between oWhite oWhite e
 -- Productions
 axiom = free boundExpr
     
-atom = (:[]) $< symbol  <|>  paren
+atom = (:[]) $< symbol  <|> paren
  
 wrap beg g end = between (string beg) (string end) g
 paren = wrap "(" (inParen wrParen) ")"
         <|> wrap "[" (inParen mkNode) "]"
         <|> wrap "{" (inParen concat) "}"
-inParen wr = wr $< (oWhite >> many (free looseExpr))
+inParen wr = wr $< (oWhite >> looseExpr`endBy`oWhite)
 
-looseExpr = (<?>"looseExpr") $ concat $< (boundExpr `sepBy1` free (oneOf ",;"))
-boundExpr = (<?>"boundExpr") $ wrParen $< (infExpr `sepBy1` free (char '_'))
-infExpr = (<?>"infExpr") $ foldl fun $< tightExpr >$< many tl 
+looseExpr = (<?>"loose expression") $ concat $< (boundExpr `sepBy1` free (oneOf ",;"))
+boundExpr = (<?>"bound expression") $ wrParen $< (infExpr `sepBy1` free (char '_'))
+infExpr = (<?>"infix expression") $ foldl fun $< tightExpr >$< many tl 
   where fun e (Left f) = [Group $ f++e]
         fun e (Right (o,e')) = [Group $ o++e++e']
-        opExpr = (<?>"opExpr") $ concat $< many1 atom
+        opExpr = (<?>"operator expression") $ concat $< many1 atom
         tl =  (free (char '.') >> Left  $< opExpr)
           <|> (free (char ':') >> Right $< ((,) $< opExpr >$< (oWhite >> tightExpr)))
-tightExpr = (<?>"tightExpr") $ wrParen $< many1 atom
+tightExpr = (<?>"close expression") $ wrParen $< many1 atom
     
 symbol =  Symbol $< ((string <?> "string") <|> (symbol <?> "symbol"))
   where string = do 
@@ -71,5 +71,5 @@ oWhite = optional $ white
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 

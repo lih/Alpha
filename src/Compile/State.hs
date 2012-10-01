@@ -1,8 +1,9 @@
+{-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction #-}
 module Compile.State(
   module Environment, 
-  module Util.Graph,
+  module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
-  envF,depGraphF,infoStackF,
+  depGraphF,infoStackF,
   newVar,
   pushInfo,popInfo,topInfo,withInfo,withTopInfo,
   defaultState,
@@ -18,16 +19,20 @@ module Compile.State(
   )
   where
 
-import IR
-import Util.State
-import Util.Monad
-import Util.ID
-import Util.Graph hiding (deleteEdge,deleteNode,getContext,Context,empty)
+import PCode
+import My.Control.Monad.State
+import My.Control.Monad
+import ID
+import My.Data.Graph hiding (deleteEdge,deleteNode,getContext,Context,empty)
 import Environment hiding(lookupSymName)
 
-import qualified Util.Graph as G
+import qualified My.Data.Graph as G
 import qualified Environment as E
 import qualified Data.Map as M
+
+deriving instance Eq Instruction
+deriving instance Eq PCode.Value
+deriving instance Eq BindVar
 
 data BranchType = Forward | Backward
                 deriving (Show,Eq)
@@ -35,33 +40,28 @@ data EdgeData = BranchAlt BranchType Int
               | TimeDep
               deriving (Show,Eq)
 data NodeData = Instr Instruction
-              | BrPart IR.Value
+              | BrPart PCode.Value
+              deriving Eq 
 type CaseInfo = (Node,[Node],Node,Maybe ID)
 
 data CompileState = CS {
-  context   :: Context,
   infoStack :: [CaseInfo],
   imports   :: [String],
   depGraph  :: Graph EdgeData NodeData
   }
                   deriving Show
 
-getSymName :: ID -> State CompileState (Maybe String)
-getNodeList :: State CompileState [Node]
-getContext  :: Node -> State CompileState (G.Context EdgeData NodeData)
+depGraphF = Field (depGraph,(\g cs -> cs { depGraph = g }))
+infoStackF = Field (infoStack,(\l cs -> cs { infoStack = l }))
 
-envF = (context,\e cs -> cs { context = e })
-depGraphF = (depGraph,(\g cs -> cs { depGraph = g }))
-infoStackF = (infoStack,(\l cs -> cs { infoStack = l }))
-
-defaultState env = CS env [] [] G.empty
+defaultState = CS [] [] G.empty
 singleCode n = ([n],[n])
 isBackEdge (_,BranchAlt Backward _) = True
 isBackEdge _ = False
 
-getSymName = getsF envF . E.lookupSymName
-getSymVal  = getsF (envF <.> valsF) . M.lookup
-newVar     = stateF envF createSym
+getSymName = lift . gets . E.lookupSymName
+getSymVal s = lift $ getsF valsF $ M.lookup s
+newVar     = lift $ state createSym
 
 pushInfo        = modifyF infoStackF . (:)
 popInfo         = stateF infoStackF (\(h:t) -> (h,t))
@@ -119,5 +119,5 @@ instance Show NodeData where
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 

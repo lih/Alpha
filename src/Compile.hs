@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, ParallelListComp #-}
+{-# LANGUAGE TupleSections, ParallelListComp, NoMonomorphismRestriction #-}
 module Compile(compile) where
 
 import Debug.Trace
@@ -6,18 +6,18 @@ import Debug.Trace
 import Compile.Utils
 
 import Compile.State as CS
-import IR
-import Util.Prelude
-import Util.ID
-import Util.Graph as G hiding (deleteEdge,deleteNode)
-import Util.State
-import Util.Monad
-import Util.List
+import PCode
+import My.Prelude
+import ID
+import My.Data.Graph as G hiding (deleteEdge,deleteNode)
+import My.Control.Monad.State
+import My.Control.Monad
+import My.Data.List
 import Syntax
 import Data.Maybe
 import Data.Either
 
-compile env dest expr = runState st (defaultState env)
+compile dest expr = runStateT st defaultState
   where st = do
           (_,(start,_)) <- compile' dest expr 
           simplify start >>= linearize
@@ -59,10 +59,10 @@ compileAxiom XBind _ args = doBind args
   where 
     doBind' bVars compile = compile *>>= \v -> do 
       bnd <- bindFromSyntax bVars
-      n <- createNode (Instr $ IR.Bind bnd v)
+      n <- createNode (Instr $ PCode.Bind bnd v)
       return (NullVal,singleCode n)
     doBind [bVars] = doBind' bVars $ nullCode
-    doBind [bVars,expr] = doBind' bVars $ compile' Nothing expr
+    doBind [bVars,expr] = doBind' bVars $ newVar >>= \v -> compile' (Just v) expr
 
 compileAxiom XDo dest [] = nullCode
 compileAxiom XDo dest forms = do 
@@ -94,17 +94,17 @@ compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
 compileAxiom XVerb dest [Group (name:args),expr] = do
   bindArgs <- mapM bindFromSyntax args
   (sym,ret,code) <- compileBody name expr
-  modifyF envF $ exportSymVal sym (Verb bindArgs ret code)
+  lift $ modify $ exportSymVal sym (Verb bindArgs ret code)
   compile' dest (Symbol sym)
 compileAxiom XVerb dest [Symbol s,Symbol a] = do
-  modifyF envF $ \env -> exportSymVal s (lookupSymVal a env) env
+  lift $ modify $ \env -> exportSymVal s (lookupSymVal a env) env
   compile' dest (Symbol s)
 compileAxiom XNoun dest [name,init] = do
   (sym,ret,code) <- compileBody name init
-  modifyF envF $ exportSymVal sym (Noun ret code)
+  lift $ modify $ exportSymVal sym (Noun ret code)
   compile' dest (Symbol sym)
   
-compileAxiom XRune _ [Symbol s] = do
+compileAxiom XLang _ [Symbol s] = do
   getSymName s >>= maybe (return()) (modify . (\n e -> e { imports = n:imports e }))
   nullCode
 
@@ -117,7 +117,7 @@ compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "
 compileBody retBind body = do
   ret <- newVar
   bv <- bindFromSyntax retBind
-  code <- stateF envF $ \env -> let (c,st) = compile env (Just ret) body in (c,context st)
+  code <- lift $ fst $< compile (Just ret) body
   return (bindSym bv,bv { bindSym = ret },code)
 compileValue dest val = do
   c <- singleCode $< case dest of
@@ -149,5 +149,5 @@ bindFromSyntax s = error $ "Invalid shape for bindVar : "++show s
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 

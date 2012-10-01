@@ -1,5 +1,5 @@
 module Environment.Foreign( 
-  getEnv,setEnv,withEnv,stateEnv,
+  getEnv,setEnv,withEnv,stateEnv,stateEnvT,
   defaultEnv,
   doTransform
   )where
@@ -9,8 +9,8 @@ import Data.IORef
 import Environment.Axiom
 import Environment.Value
 import Environment.Context
-import IR
-import Util.ID
+import PCode
+import ID
 import Syntax
 import Control.Monad.State
 
@@ -23,7 +23,7 @@ defaultEnv = fromList $ [
   ("->"     ,Axiom XReturn),
   ("do"     ,Axiom XDo),
   
-  ("rune"   ,Axiom XRune),
+  ("lang"   ,Axiom XLang),
   ("verb"   ,Axiom XVerb),
   ("noun"   ,Axiom XNoun),        
             
@@ -46,9 +46,8 @@ withEnv e a = do
   setEnv e'
   return ret
 stateEnv st = getEnv >>= \e -> let (e',s') = runState st e in setEnv s' >> return e'
+stateEnvT st = getEnv >>= \e -> runStateT st e >>= \(e',s') -> setEnv s' >> return e'
 doTransform syn = return syn
-
-
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
@@ -58,5 +57,5 @@ doTransform syn = return syn
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
