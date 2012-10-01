@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module IR.Instruction where
+module PCode.Instruction where
 
 import Control.Monad.State
 import Data.List
@@ -7,9 +7,9 @@ import Data.Maybe
 import Data.Array
 import Data.Tree
 import qualified Data.Set as S
-import IR.Builtin
-import IR.Value
-import Util.ID
+import PCode.Builtin
+import PCode.Value
+import ID
 
 type Addr = Int
 data BindVar = BindVar { 
@@ -56,15 +56,18 @@ navigate code = (bs,instr,nexts,prevs)
         nexts n = [n+1]
         prevs n = accumArray (flip (:)) [] bs [(n,i) | i <- [bMin..bMax], n <- nexts i] ! n
 
-instrTree seed nexts = evalState (unfoldTreeM unfold seed) S.empty
+spanningTree seed nexts = evalState (unfoldTreeM unfold seed) S.empty
   where unfold seed = do modify (S.insert seed) ; s <- get 
                          return (seed,[n | n <- nexts seed, not $ S.member n s])
             
+spanArray bs tree = array bs (assocs Nothing tree)
+  where assocs p (Node a subs) = (a,(p,map rootLabel subs)):concatMap (assocs (Just a)) subs
+
 instance Show Instruction where  
   show (Op BCall d (f:args)) = show d ++ " = " ++ show f ++ "(" ++ intercalate "," (map show args) ++ ")"
   show (Op BSet v [val]) = show v ++ " = " ++ show val
   show (Op o d vs) = show d ++ " = " ++ intercalate (" "++opStr++" ") (map show vs)
-    where opStr = fromMaybe (error $ "unknown pervasive "++show o) $ lookup o bNames
+    where opStr = fromMaybe (error $ "unknown builtin "++show o) $ lookup o bNames
   show (Branch _ []) = "return"
   show (Branch _ [off]) = "goto " ++ show off
   show (Branch v off) = "case " ++ show v ++ " " ++ show off 
@@ -89,5 +92,5 @@ instance Show BindVar where
 --     Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 --     Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
--- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DPCodeECT, INDPCodeECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
