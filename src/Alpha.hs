@@ -34,7 +34,7 @@ execute s = case action s of
   PrintVersion -> printVersion
   Compile -> print s >> doCompile s
   
-version = "0.9.0.1"
+version = "0.9.0.2"
 printHelp = putStrLn helpMsg
 printVersion = putStrLn $ "Alpha version "++version
   
