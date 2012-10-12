@@ -3,7 +3,7 @@
 
 typedef unsigned char byte;
 
-void writeElf(int fd,byte* code,int codeSize,byte* data,int dataSize);
+void writeElf(int fd,byte* data,int dataSize);
 
 #endif // WRITEELF
 

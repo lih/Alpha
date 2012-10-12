@@ -26,7 +26,7 @@ simplify start = do
       mapM_ (purgeNode isNoop) =<< getNodeList         
       mapM_ (purgeNode isEmptyBranch) =<< getNodeList
     purgeNode p n = do
-      c <- getContext n              
+      c <- getLanguage n              
       if p c then remove (n,c) else return ()
     isNoop c = tag c==Instr Noop
     isEmptyBranch c = case tag c of 
@@ -51,9 +51,9 @@ simplify start = do
       where 
         newStart n = 
           maybe (maybe [] (\c -> concat [newStart n | (n,_) <- outEdges c])
-                 (lookupContext n old)) 
+                 (lookupLanguage n old)) 
           (const [n])
-          (lookupContext n new)
+          (lookupLanguage n new)
 
 data ANode = ANode {
   weight :: Int,
@@ -65,15 +65,15 @@ linearize start = getsF depGraphF (linearize' start)
 linearize' start depG = instrs
   where 
     aG = annotate depG
-    getContext n = G.getContext n aG
-    withContext n = (n,getContext n)
+    getLanguage n = G.getLanguage n aG
+    withLanguage n = (n,getLanguage n)
     
-    isBrPart (instr . tag . getContext -> BrPart _) = True
+    isBrPart (instr . tag . getLanguage -> BrPart _) = True
     isBrPart _ = False
     instrMap = M.fromList [(n,i) | (i,(n,_)) <- zip [0..] $ concat [map (n,) (getInstr n) | n <- concat blocks]]
     instrs = concatMap (concatMap getInstr) blocks    
 
-    getInstr (getContext -> c) = case tag c of
+    getInstr (getLanguage -> c) = case tag c of
       ANode { instr = BrPart v } -> [Branch v $ map branch (classesBy (===) oes)]
         where branch ns = minimum $ catMaybes [M.lookup n instrMap | (n,_) <- ns]
               (_,e) === (_,e') = e==e'
@@ -81,17 +81,17 @@ linearize' start depG = instrs
       where oes = outEdges c
 
     selectHeads l = [n | (n,c) <- l, weight (tag c)==1]
-    startHeads = selectHeads $ map withContext $ nub start
+    startHeads = selectHeads $ map withLanguage $ nub start
     heads = startHeads : deleteBy headsEq startHeads heads
       where eq n1 n2 = if n1`elem`start then n2`elem`start else c'
-              where c' = n2 `elem` [n | (n,e') <- outEdges $ getContext prev, e==e']
-                    (prev,e) = fromMaybe (error $ "Couldn't find edge of "++show n1++" in graph "++show aG) $ find isBackEdge $ inEdges $ getContext n1
+              where c' = n2 `elem` [n | (n,e') <- outEdges $ getLanguage prev, e==e']
+                    (prev,e) = fromMaybe (error $ "Couldn't find edge of "++show n1++" in graph "++show aG) $ find isBackEdge $ inEdges $ getLanguage n1
             headsEq a b = sort a==sort b
             heads = classesBy eq $ selectHeads $ nodeListFull aG
     tails = map (nub . concatMap saturate) heads
     saturate n = if null nexts then [n] else concatMap saturate nexts
-      where nexts = [n' | let c = getContext n                                
-                        , (n',c') <- map withContext $ nextNodes c
+      where nexts = [n' | let c = getLanguage n                                
+                        , (n',c') <- map withLanguage $ nextNodes c
                         , weight (tag c') > weight (tag c)]
     
     blocks = map blockFromTails tails
@@ -103,21 +103,21 @@ linearize' start depG = instrs
           prevs <- mapM makeBlock (getPrevs n)
           visit n
           return $ concat prevs ++ [n]
-        getPrevs n = map fst $ sortBy cmp $ filter p $ map withContext $ prevNodes context
+        getPrevs n = map fst $ sortBy cmp $ filter p $ map withLanguage $ prevNodes language
           where cmp (_,c) (_,c') = compare (erNum $ tag c') (erNum $ tag c)
-                p (_,c) = weight (tag c) < weight (tag context)
-                context = getContext n
+                p (_,c) = weight (tag c) < weight (tag language)
+                language = getLanguage n
 
 annotate depG = newdepG
   where 
     newdepG = mapNodes depCalc depG
     depCalc (depCalc' -> (a,b)) i = ANode a b i
-    depCalc' (flip G.getContext depG -> c)
+    depCalc' (flip G.getLanguage depG -> c)
       | any isBackEdge <||> null $ inEdges c = (1,1)
       | otherwise = (1+maximum a, maximum $ zipWith (+) [0..] (reverse $ sort b))
       where (a,b) = unzip [(weight t,erNum t) 
                           | n' <- prevNodes c
-                          , let t = tag $ G.getContext n' newdepG]
+                          , let t = tag $ G.getLanguage n' newdepG]
             
     maximum = foldl max 0
 

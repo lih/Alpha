@@ -22,13 +22,16 @@ data Instruction = Op Builtin ID [Value]
                  | Branch Value [Addr]
                  | Bind BindVar Value
                  | Noop
-                                      
+data Code = Code [BindVar] [Instruction] BindVar
+            deriving Show
+
 isNoop Noop = True
 isNoop _ = False
 isBranch (Branch _ _) = True
 isBranch _ = False
 
 bindSyms bv = bindSym bv : concatMap bindSyms (map fst $ bindSubs bv)
+symBind s = BindVar s (0,1) 0 []
 instrVals (Op _ _ vs) = vs
 instrVals (Bind _ v) = [v]
 instrVals (Branch v _) = [v]
@@ -62,7 +65,13 @@ spanningTree seed nexts = evalState (unfoldTreeM unfold seed) S.empty
             
 spanArray bs tree = array bs (assocs Nothing tree)
   where assocs p (Node a subs) = (a,(p,map rootLabel subs)):concatMap (assocs (Just a)) subs
-
+codeRefs (Code args code ret) = refs code (bindSyms ret++concatMap bindSyms args)
+  where refs code local = traverse (S.fromList local) (spanningTree 0 nexts)
+          where (_,instr,nexts,_) = navigate code
+                traverse local (Node i subs) = valRefs (instrVals (instr i)) ++ concatMap (traverse newLocal) subs
+                  where valRefs vals = [v | SymVal t v <- vals, t==SymID || not (S.member v local)]
+                        newLocal = S.union local (S.fromList (instrVars (instr i)))
+        
 instance Show Instruction where  
   show (Op BCall d (f:args)) = show d ++ " = " ++ show f ++ "(" ++ intercalate "," (map show args) ++ ")"
   show (Op BSet v [val]) = show v ++ " = " ++ show val

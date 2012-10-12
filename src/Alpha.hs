@@ -1,23 +1,26 @@
+{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction #-}
 import System.Environment as SE
 import System.FilePath
 import System.Directory
 import System.Posix.Files
+import Data.Ord
+import Data.Maybe
+import qualified Data.Map as M
+import qualified Data.Bimap as BM
+import qualified Data.Serialize as Ser
+import qualified Data.ByteString as B
+import Data.List
+import My.Control.Monad
+import My.Control.Monad.State hiding ((<.>))
+import My.Prelude
 import Options
 import Elf (writeElf)
 import Syntax
 import Syntax.Parse
-import Environment.Foreign as E
-import Environment.Context
 import Compile
-import Compile.State
 import Serialize
-import Data.Serialize
-import qualified Data.ByteString as B
-import Data.Maybe
-import My.Control.Monad
-import Control.Monad.State
-import My.Prelude
 import Specialize
+import Context
 import PCode
 
 main = do
@@ -38,7 +41,7 @@ printVersion = putStrLn $ "Alpha version "++version
 newtype Str = Str String
 instance Show Str where show (Str s) = s
 
-doTestOlder = return False
+doTestOlder = return True -- for testing purposes, turn makefile-style file dependencies on or off 
 
 doCompile opts = case programs opts of 
   [] -> interactive
@@ -47,37 +50,37 @@ doCompile opts = case programs opts of
     languageFile language = languageDir opts</>language<.>"l"
     findSource language = findM fileExist (concat [[base,base<.>"a"] | dir <- sourceDirs opts
                                                                      , let base = dir</>language])
-    interactive = void $ compileFile "/dev/stdin"     
-    compileProgram prog = error "unimplemented"
-    compileLanguage name = do
-      source <- fromMaybe (error$"Couldn't find source file for language "++name) $< findSource name
-      let language = languageFile name
-      ifM (doTestOlder <&&> fileExist language <&&> (language `newerThan` source)) 
-          (putStrLn $ "Language "++name++" already compiled. Skipping.") $ do 
-        env <- compileFile source
-        print env
-        createDirectoryIfMissing True (dropFileName language)
-        B.writeFile language (encode $ exportContext env)
-    
-    doImport imp = stateEnvT $ addImport getImp imp
-      where getImp imp = do
-              putStrLn $ "Importing language "++imp
-              compileLanguage imp
-              let language = languageFile imp
-              ce <- either error id $< decode $< B.readFile language
-              print ce
-              return ce
+    readProg s = let (a,':':b) = break (==':') s in (a,b)
         
-    compileFile src = withEnv defaultEnv $ (>>E.getEnv) $ do 
+    interactive = void $ compileFile "/dev/stdin"     
+    compileProgram (readProg -> (language,root)) = withDefaultContext $ do
+      importLanguage compileLanguage language
+      rootSym <- stateF languageF $ internSym root
+      getAddressComp (outputArch opts) rootSym
+      chunks <- sortBy (comparing fst) $< M.elems $< gets compAddresses
+      undefined
+    compileLanguage name = do
+      source <- fromMaybe (fail $ "Couldn't find source file for language "++name) $< findSource name
+      let langFile = languageFile name
+      b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
+      if b then either error id $< Ser.decode $< B.readFile langFile else do 
+        lang <- compileFile source
+        createDirectoryIfMissing True (dropFileName langFile)
+        B.writeFile langFile (Ser.encode lang)
+        return lang
+    loadLanguage name = compileLanguage name >>= execCode . loadCode >> languageState get
+    
+    compileFile src = withDefaultContext $ (>> gets language) $ do 
       str <- readFile src
       let sTree = concat $ parseAlpha src str
       code <- mapM compileExpr sTree
-      stateEnv $ modify (\e -> e { loadCode = foldr concatCode [] code })
+      languageState $ modify $ \e -> exportLanguage $ e { loadCode = foldr concatCode [] code }
       where compileExpr expr = print expr >> do
-              symExpr <- stateEnv $ envCast expr
+              symExpr <- languageState $ envCast expr
               trExpr <- doTransform symExpr
-              (code,cs) <- stateEnv $ compile Nothing trExpr
-              mapM_ doImport (imports cs)
+              (code,imports) <- languageState $ compile Nothing trExpr
+              mapM_ (importLanguage loadLanguage) imports
+              execCode code 
               return code
       
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>

@@ -20,7 +20,7 @@ source-repository head
   location: git://github.com/lih/Alpha.git
 
 executable alpha
-  build-depends:  base<=4.5.1.0, unix, containers, array, mtl, bytestring, bimap, ghc-prim, directory, filepath, cereal, parsec, transformers
+  build-depends:  base<=4.6.0.0, unix, containers, array, mtl, bytestring, bimap, ghc-prim, directory, filepath, cereal, parsec, transformers
   main-is:        Alpha.hs
   other-modules:  Alpha, Compile, Compile.State, Compile.Utils, Elf, Environment, Environment.Axiom, Environment.Context, Environment.Foreign, Environment.Value, ID, My.Control.Monad, My.Control.Monad.State, My.Control.Monad.TimeLine, My.Data.Graph, My.Data.List, My.Prelude, Options, PCode, PCode.Builtin, PCode.Instruction, PCode.Value, Serialize, Specialize, Specialize.Architecture, Specialize.Types, Specialize.X86, Syntax, Syntax.Parse, Translate
   hs-source-dirs: src

@@ -2,59 +2,48 @@
 #include <libelf.h>
 #include "writeElf.h"
 
-void writeElf(int fd,byte* code,int codeSize,byte* data,int dataSize) {
-    unsigned int hSize = sizeof(Elf64_Ehdr) + 2*sizeof(Elf64_Phdr);
-    unsigned int entry = (1<<21) + hSize;
+#define SETSTRUCT(v,t,vals...) { t tmp = vals; v = tmp; }
 
-    Elf64_Ehdr eh = {
-        .e_ident = { 
-            ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3,
-            ELFCLASS64, ELFDATA2LSB,
-            EV_CURRENT,
-            ELFOSABI_NONE, 0,
-            0
-        },
-        .e_type      = ET_EXEC,
-        .e_machine   = EM_X86_64,
-        .e_version   = EV_CURRENT,
-        .e_entry     = entry,
-        .e_phoff     = sizeof(Elf64_Ehdr),
-        .e_shoff     = 0,
-        .e_flags     = 0,
-        .e_ehsize    = sizeof(Elf64_Ehdr),
-        .e_phentsize = sizeof(Elf64_Phdr),
-        .e_phnum     = 2,
-        .e_shentsize = 0,
-        .e_shnum     = 0,
-        .e_shstrndx  = SHN_UNDEF
-    };
-    Elf64_Phdr pht[2] = {
-        {
-            .p_type   = PT_LOAD,
+void writeElf(int fd,byte* data,int dataSize) {
+   Elf64_Ehdr eh;    Elf64_Phdr pht[1];
+   unsigned int hSize = sizeof(eh) + sizeof(pht);
+
+   SETSTRUCT(eh,Elf64_Ehdr,
+             {
+                .e_ident = { 
+                   ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3,
+                   ELFCLASS64, ELFDATA2LSB,
+                   EV_CURRENT,
+                   ELFOSABI_NONE, 0,
+                   0
+                },
+                   .e_type      = ET_EXEC,
+                       .e_machine   = EM_X86_64,
+                       .e_version   = EV_CURRENT,
+                       .e_entry     = 0,
+                       .e_phoff     = sizeof(Elf64_Ehdr),
+                       .e_shoff     = 0,
+                       .e_flags     = 0,
+                       .e_ehsize    = sizeof(Elf64_Ehdr),
+                       .e_phentsize = sizeof(Elf64_Phdr),
+                       .e_phnum     = 2,
+                       .e_shentsize = 0,
+                       .e_shnum     = 0,
+                       .e_shstrndx  = SHN_UNDEF
+                       });
+   SETSTRUCT(pht[0],Elf64_Phdr,{ .p_type   = PT_LOAD,
             .p_offset = hSize,
-            .p_vaddr  = entry,
-            .p_paddr  = entry,
-            .p_filesz = codeSize,
-            .p_memsz  = codeSize,
-            .p_flags  = PF_R | PF_X,
-            .p_align  = 1<<21
-        },
-        {
-            .p_type   = PT_LOAD,
-            .p_offset = hSize+codeSize,
-            .p_vaddr  = entry+codeSize,
-            .p_paddr  = entry+codeSize,
+            .p_vaddr  = 0,
+            .p_paddr  = 0,
             .p_filesz = dataSize,
             .p_memsz  = dataSize,
             .p_flags  = PF_R | PF_W | PF_X,
             .p_align  = 1
-        }
-    };
+               });
     
-    write(fd,&eh,sizeof(eh));
-    write(fd,&pht,sizeof(pht));
-    write(fd,code,codeSize);
-    write(fd,data,dataSize);
+   write(fd,&eh,sizeof(eh));
+   write(fd,&pht,sizeof(pht));
+   write(fd,data,dataSize);
 }
 
 /* 

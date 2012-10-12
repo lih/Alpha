@@ -1,8 +1,8 @@
 module My.Data.Graph( 
-  Context,Graph,Node(..),
+  Language,Graph,Node(..),
   
   empty,
-  lookupContext,getContext,
+  lookupLanguage,getLanguage,
   insertNode,deleteNode,modifyNode,
   insertEdge,deleteEdge,
   
@@ -21,24 +21,24 @@ import Data.List
 import Data.Maybe
 
 type Node = Int
-data Context e n = Context { 
+data Language e n = Language { 
   nodeTag :: n, 
   nodeInEdges :: M.Map Node e, 
   nodeOutEdges :: M.Map Node e
   } deriving Show
 data Graph e n = Graph {
   nbNodes :: Int,
-  graphNodes :: M.Map Node (Context e n)
+  graphNodes :: M.Map Node (Language e n)
   }
                  
 empty = Graph 0 M.empty
 
-lookupContext n (Graph _ nds) = M.lookup n nds
-getContext n g = fromMaybe (error $ "No node "++show n++" in graph "++show g) $ lookupContext n g
+lookupLanguage n (Graph _ nds) = M.lookup n nds
+getLanguage n g = fromMaybe (error $ "No node "++show n++" in graph "++show g) $ lookupLanguage n g
 
-insertNode x (Graph n nds)       = (n,Graph (n+1) (M.insert n (Context x M.empty M.empty) nds))
+insertNode x (Graph n nds)       = (n,Graph (n+1) (M.insert n (Language x M.empty M.empty) nds))
 deleteNode nd (Graph n nds)      = Graph n (M.delete nd nds)
-modifyNode nd f (Graph n nds)    = Graph n (M.adjust (\(Context t i o) -> Context (f t) i o) nd nds)
+modifyNode nd f (Graph n nds)    = Graph n (M.adjust (\(Language t i o) -> Language (f t) i o) nd nds)
 
 insertEdge x n1 n2 (Graph n nds) = Graph n (M.adjust (modifyInEdges (M.insert n1 x)) n2 $
                                             M.adjust (modifyOutEdges (M.insert n2 x)) n1 nds) 
@@ -59,23 +59,19 @@ prevNodes = map fst . inEdges
 nodeList = map fst . nodeListFull
 nodeListFull = M.toList . graphNodes
 
-mapNodes f (Graph n nds) = Graph n (M.mapWithKey (\n (Context t ie oe) -> Context (f n t) ie oe) nds)
+mapNodes f (Graph n nds) = Graph n (M.mapWithKey (\n (Language t ie oe) -> Language (f n t) ie oe) nds)
 
 instance Functor (Graph e) where
   fmap f = mapNodes (const f)
 instance (Show n,Show e) => Show (Graph e n) where
   show (Graph _ nds) = intercalate "\n" showNodes
     where showNodes = map showNode $ M.toList nds
-          showNode (n,Context nd ie oe) = 
+          showNode (n,Language nd ie oe) = 
             show n++": "++show nd++"\n  "++
             intercalate "\n  " (map showNEdge (M.toList oe)
                                 ++ map showREdge (M.toList ie))
               where showNEdge (n',e) = "--"++show e++"--> "++show n'
                     showREdge (n',e) = "<--"++show e++"-- "++show n'
-  
-            
-  
-
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

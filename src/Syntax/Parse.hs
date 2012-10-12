@@ -30,22 +30,25 @@ free e = try $ between oWhite oWhite e
 -- Productions
 axiom = free boundExpr
     
-atom = (:[]) $< symbol  <|> paren
+atom = (\x -> [x]) $< symbol <|> parGroup
  
 wrap beg g end = between (string beg) (string end) g
-paren = wrap "(" (inParen wrParen) ")"
+parGroup = wrap "(" (inParen wrParen) ")"
         <|> wrap "[" (inParen mkNode) "]"
         <|> wrap "{" (inParen concat) "}"
 inParen wr = wr $< (oWhite >> looseExpr`endBy`oWhite)
 
+chain expr op e = (do o <- try op
+                      e' <- expr
+                      chain expr op (o e e'))
+                  <|> return e
+  
 looseExpr = (<?>"loose expression") $ concat $< (boundExpr `sepBy1` free (oneOf ",;"))
 boundExpr = (<?>"bound expression") $ wrParen $< (infExpr `sepBy1` free (char '_'))
-infExpr = (<?>"infix expression") $ foldl fun $< tightExpr >$< many tl 
-  where fun e (Left f) = [Group $ f++e]
-        fun e (Right (o,e')) = [Group $ o++e++e']
-        opExpr = (<?>"operator expression") $ concat $< many1 atom
-        tl =  (free (char '.') >> Left  $< opExpr)
-          <|> (free (char ':') >> Right $< ((,) $< opExpr >$< (oWhite >> tightExpr)))
+infExpr = (<?>"infix expression") $ chain (return ()) op =<< tightExpr
+  where opExpr = (<?>"operator expression") $ concat $< many1 atom
+        op = (free (char '.') >> liftM (\o e _ -> [Group $ o++e]) opExpr)
+             <|> (free (char ':') >> liftM2 (\o e' e _ -> [Group $ o++e++e']) opExpr (oWhite >> tightExpr))
 tightExpr = (<?>"close expression") $ wrParen $< many1 atom
     
 symbol =  Symbol $< ((string <?> "string") <|> (symbol <?> "symbol"))

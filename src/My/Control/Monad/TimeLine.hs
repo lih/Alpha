@@ -1,4 +1,4 @@
-{-# LANGUAGE DoRec, NoMonomorphismRestriction #-}
+{-# LANGUAGE RecursiveDo, NoMonomorphismRestriction #-}
 module My.Control.Monad.TimeLine where
 
 import Data.Functor.Identity

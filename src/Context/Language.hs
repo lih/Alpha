@@ -1,35 +1,27 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoMonomorphismRestriction, FlexibleContexts #-}
 
-module Environment.Context where
+module Context.Language where
 
-import PCode
+import My.Prelude
+
 import Data.Maybe
-import Environment.Value as E
+import My.Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Bimap as BM
-import Control.Monad.Trans
-import ID
+
 import My.Control.Monad
 import My.Control.Monad.State
-import My.Data.List
-import My.Prelude
+import Control.Monad.Trans
+
+import ID
+import PCode
+import Context.Types as C
 import Translate
 
-data Context = CE {
-  maxID    :: ID,
-  symMap   :: BM.Bimap String ID,
-  aliasMap :: M.Map ID ID,
-  equivMap :: M.Map ID ID,
-  modMap   :: BM.Bimap String IDRange,
-  valMap   :: M.Map ID E.Value,
-  exports  :: S.Set ID,
-  loadCode :: [Instruction]
-  }
-
 showTable name showLine contents = (name++":"):map ("  "++) (concatMap showLine contents)
-instance Show Context where
-  show e = intercalate "\n" $ showTable "Environment" id [
+instance Show Language where
+  show e = intercalate "\n" $ showTable "Context" id [
     ["Max ID: "++show (maxID e)],
     showTable "Symbols" (\(s,i) -> [s++" -> "++show i]) $ BM.toList (symMap e),
     showTable "Aliases" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (aliasMap e),
@@ -39,12 +31,9 @@ instance Show Context where
     ["Exports: "++show (exports e)],
     ["Load code: "++show (loadCode e)]]
 
-empty = CE (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty []
+empty = Language (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty undefined
 
-symsF = Field (symMap,\s ce -> ce { symMap = s })
-valsF = Field (valMap,\v ce -> ce { valMap = v })
-
-createSym e@(CE { maxID = m }) = (m,e { maxID = succ m })
+createSym e@(Language { maxID = m }) = (m,e { maxID = succ m })
 setSymVal id v e = e { valMap = M.insert id v (valMap e) }
 lookupSymName id e = BM.lookupR id (symMap e)
 lookupSymVal id e = fromMaybe NoValue $ M.lookup id (valMap e) 
@@ -65,37 +54,39 @@ envCast t = traverseM (state . intern) t
   where intern "?" = createSym
         intern str = internSym str
               
-addImport :: Monad m => (String -> m Context) -> String -> StateT Context m ()
-addImport getImp imp = merge imp
+importLanguage :: MonadState Context m => (String -> m Language) -> String -> m ()
+importLanguage getImport imp = merge imp
   where 
-    merge imp = get >>= \e -> if imp`isImport`e then return () else do
-      e' <- lift $ getImp imp
-      mapM_ merge [imp | (imp,_) <- BM.toList (modMap e')]
-      let syms' = symMap e' ; mods' = modMap e' ; mi' = maxID e'
+    getImp imp = do
+      l' <- getImport imp
+      mapM_ merge [imp | (imp,_) <- BM.toList (modMap l')]
+      return l'
+    merge imp = gets language >>= \l -> if imp`isImport`l then return () else getImp imp >>= \l' -> doF languageF $ do
+      let syms' = symMap l' ; mods' = modMap l' ; mi' = maxID l'
       mapM (state . internSym) (BM.keys syms')
-      mi <- gets maxID ; syms <- gets symMap
+      Language { maxID = mi, symMap = syms } <- get
       let aliases = [(i'+mi,fromJust $ BM.lookup s' syms) 
                     | (s',i') <- BM.toList syms']
-      modify $ \e -> e {
+      modify $ \l -> l {
         maxID = mi+mi',
-        aliasMap = aliasMap e `M.union` M.fromList aliases,
-        equivMap = equivMap e `M.union` M.fromList (map swap aliases)
+        aliasMap = aliasMap l `M.union` M.fromList aliases,
+        equivMap = equivMap l `M.union` M.fromList (map swap aliases)
         }
-      CE { aliasMap = al , modMap = mods } <- get
+      Language { aliasMap = al , modMap = mods } <- get
       let tr s = fromMaybe (tr' s) $ M.lookup (tr' s) al
           tr' s' = fromMaybe (s' + mi) $ do
-            m <- lookupSymMod s' e'
+            m <- lookupSymMod s' l'
             IDRange (r,_) <- BM.lookup m mods
             IDRange (r',_) <- BM.lookup m mods'
             return $ s'-r'+r
-          newVals = M.mapKeys tr $ M.map (translate tr) $ valMap e'
-      modify $ \e -> e {
-        modMap = BM.insert imp (IDRange (mi,mi+mi')) (modMap e),
-        valMap = M.unionWith (\_ a -> a) (valMap e) newVals,
-        exports = S.difference (exports e) (M.keysSet newVals) 
+          newVals = M.mapKeys tr $ M.map (translate tr) $ valMap l'
+      modify $ \l -> l {
+        modMap = BM.insert imp (IDRange (mi,mi+mi')) (modMap l),
+        valMap = M.unionWith (\_ a -> a) (valMap l) newVals,
+        exports = S.difference (exports l) (M.keysSet newVals) 
         }
           
-exportContext e = e {
+exportLanguage e = e {
   symMap   = BM.filter exportNameP (symMap e),
   valMap   = vals',
   aliasMap = M.empty,
@@ -110,6 +101,10 @@ exportContext e = e {
         refs = S.fromList $ concatMap references $ M.elems vals'
         exportNameP _ s = (S.member s ex || S.member s refs)
                           && not (M.member s eqs)
+        references val = case val of
+          Verb code -> codeRefs code 
+          Noun size init -> codeRefs size ++ codeRefs init
+          _ -> []
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

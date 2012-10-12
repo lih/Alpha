@@ -1,16 +1,16 @@
 {-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction #-}
 module Compile.State(
-  module Environment, 
+  module Context, 
   module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
-  depGraphF,infoStackF,
+  depGraphF,infoStackF,importsF,
   newVar,
   pushInfo,popInfo,topInfo,withInfo,withTopInfo,
   defaultState,
   getSymName,getSymVal,
   singleCode,
   isBackEdge,
-  getNodeList,getContext,
+  getNodeList,getLanguage,
   createEdge,deleteEdge,
   createNode,deleteNode,
   nullCode,nullCodeVal,
@@ -23,11 +23,12 @@ import PCode
 import My.Control.Monad.State
 import My.Control.Monad
 import ID
-import My.Data.Graph hiding (deleteEdge,deleteNode,getContext,Context,empty)
-import Environment hiding(lookupSymName)
+import My.Data.Graph hiding (deleteEdge,deleteNode,getLanguage,Language,empty)
+import Context
+import Context.Language as L
 
 import qualified My.Data.Graph as G
-import qualified Environment as E
+import qualified Context as E
 import qualified Data.Map as M
 
 deriving instance Eq Instruction
@@ -53,13 +54,14 @@ data CompileState = CS {
 
 depGraphF = Field (depGraph,(\g cs -> cs { depGraph = g }))
 infoStackF = Field (infoStack,(\l cs -> cs { infoStack = l }))
+importsF = Field (imports,(\l cs -> cs { imports = l }))
 
 defaultState = CS [] [] G.empty
 singleCode n = ([n],[n])
 isBackEdge (_,BranchAlt Backward _) = True
 isBackEdge _ = False
 
-getSymName = lift . gets . E.lookupSymName
+getSymName = lift . gets . L.lookupSymName
 getSymVal s = lift $ getsF valsF $ M.lookup s
 newVar     = lift $ state createSym
 
@@ -74,7 +76,7 @@ nullCode      = nullCodeVal NullVal
 nullCodeVal v = mkNoop >>= \n -> return (v,singleCode n)
 
 getNodeList  = getsF depGraphF nodeList
-getContext n = getsF depGraphF (G.getContext n)
+getLanguage n = getsF depGraphF (G.getLanguage n)
 
 createNode x       = stateF depGraphF (G.insertNode x)
 deleteNode n       = modifyF depGraphF (G.deleteNode n)

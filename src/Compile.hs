@@ -3,21 +3,21 @@ module Compile(compile) where
 
 import Debug.Trace
 
-import Compile.Utils
-
-import Compile.State as CS
-import PCode
 import My.Prelude
-import ID
 import My.Data.Graph as G hiding (deleteEdge,deleteNode)
+import My.Data.List
 import My.Control.Monad.State
 import My.Control.Monad
-import My.Data.List
-import Syntax
 import Data.Maybe
 import Data.Either
+import PCode
+import Context.Language
+import Syntax
+import ID
+import Compile.Utils
+import Compile.State as CS
 
-compile dest expr = runStateT st defaultState
+compile dest expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
   where st = do
           (_,(start,_)) <- compile' dest expr 
           simplify start >>= linearize
@@ -31,7 +31,7 @@ compile' dest (Symbol sym) = do
     guard (not $ v `varEqVal` val) 
     return $ do n <- createNode (Instr $ set v val)
                 return (def,singleCode n)
-compile' dest (Group expr@(Symbol id:args)) = do
+compile' dest (Group (Symbol id:args)) = do
   gl <- getSymVal id
   let compile = case gl of
         Just (Axiom a) -> compileAxiom a
@@ -94,14 +94,15 @@ compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
 compileAxiom XVerb dest [Group (name:args),expr] = do
   bindArgs <- mapM bindFromSyntax args
   (sym,ret,code) <- compileBody name expr
-  lift $ modify $ exportSymVal sym (Verb bindArgs ret code)
+  lift $ modify $ exportSymVal sym (Verb (Code bindArgs code ret))
   compile' dest (Symbol sym)
 compileAxiom XVerb dest [Symbol s,Symbol a] = do
   lift $ modify $ \env -> exportSymVal s (lookupSymVal a env) env
   compile' dest (Symbol s)
-compileAxiom XNoun dest [name,init] = do
-  (sym,ret,code) <- compileBody name init
-  lift $ modify $ exportSymVal sym (Noun ret code)
+compileAxiom XNoun dest [Symbol sym,size,init] = do
+  (retSz,codeSz) <- compileExpr size
+  (retInit,codeInit) <- compileExpr init
+  lift $ modify $ exportSymVal sym $ Noun (Code [] codeSz (symBind retSz)) (Code [symBind sym] codeInit (symBind retInit))
   compile' dest (Symbol sym)
   
 compileAxiom XLang _ [Symbol s] = do
@@ -114,10 +115,14 @@ compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
 
 compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "++show args
 
-compileBody retBind body = do
+compileExpr expr = do
   ret <- newVar
+  (code,imps) <- lift $ compile (Just ret) expr
+  modifyF importsF (imps++)
+  return (ret,code)
+compileBody retBind body = do
   bv <- bindFromSyntax retBind
-  code <- lift $ fst $< compile (Just ret) body
+  (ret,code) <- compileExpr body
   return (bindSym bv,bv { bindSym = ret },code)
 compileValue dest val = do
   c <- singleCode $< case dest of
@@ -125,7 +130,7 @@ compileValue dest val = do
     Nothing -> mkNoop
   return (val,c)
 
-bindFromSyntax (Symbol v) = return $ BindVar v (0,1) 0 []
+bindFromSyntax (Symbol v) = return $ symBind v
 bindFromSyntax (Group (Symbol v:t)) = do
   let fun (ns,l) (Symbol v) = getSymName v >>= \s -> 
         maybe (fun' ns l (Symbol v)) (\n -> return (n:ns,l)) (readConstant =<< s)

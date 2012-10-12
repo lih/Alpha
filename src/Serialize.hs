@@ -9,25 +9,27 @@ import My.Control.Monad
 import Data.Bimap as BM
 import ID
 import PCode
-import Environment as E
+import Context as C
 
 deriving instance Generic ValType
 deriving instance Generic PCode.Value
+deriving instance Generic Code
 deriving instance Generic Instruction
 deriving instance Generic BindVar
 deriving instance Generic Builtin
-deriving instance Generic E.Value
+deriving instance Generic C.Value
 deriving instance Generic Axiom
 deriving instance Generic ID
 deriving instance Generic IDRange
-deriving instance Generic Context
+deriving instance Generic Language
 
 instance Serialize ValType
 instance Serialize PCode.Value
+instance Serialize Code
 instance Serialize Instruction
 instance Serialize BindVar
 instance Serialize Builtin
-instance Serialize E.Value
+instance Serialize C.Value
 instance Serialize Axiom
 instance Serialize ID
 instance Serialize IDRange
@@ -35,7 +37,7 @@ instance (Ord a,Ord b,Serialize a,Serialize b) => Serialize (Bimap a b) where
   get = BM.fromList $< get 
   put = put . BM.toList
   
-instance Serialize Context
+instance Serialize Language
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
