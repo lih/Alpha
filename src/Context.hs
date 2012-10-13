@@ -7,7 +7,9 @@ module Context(module Context.Types
               ,execCode) where
 
 import System.IO.Unsafe (unsafePerformIO)
+import Bindings.Posix.Sys.Mman
 import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr)
+import Foreign.C
 import Foreign.ForeignPtr.Unsafe
 import Data.Maybe
 import Data.ByteString.Unsafe
@@ -24,6 +26,8 @@ import PCode
 import ID
 import Syntax
 import Specialize.Architecture
+
+foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt 
 
 withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
 
@@ -77,7 +81,11 @@ foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> IO ()) -> Ptr () -
 evalCode :: (FunPtr f -> f) -> Code -> IO f
 evalCode wrap code = do 
   binary <- snd $ specialize hostArch getAddressJIT code
-  unsafeUseAsCString binary $ return . wrap . castPtrToFunPtr
+  putStrLn $ "Evaluating code "++show code
+  unsafeUseAsCStringLen binary $ \(p,s) -> do 
+    mprotect (castPtr p) (fromIntegral s) (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
+    return $ wrap $ castPtrToFunPtr p
+execCode [] = return ()
 execCode instrs = do
   id <- languageState $ state createSym                
   join $ evalCode mkProc (Code [] instrs (symBind id))

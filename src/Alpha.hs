@@ -1,14 +1,16 @@
-{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction #-}
+{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction, ParallelListComp #-}
 import System.Environment as SE
 import System.FilePath
 import System.Directory
 import System.Posix.Files
+import Foreign hiding (void)
 import Data.Ord
 import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.Bimap as BM
 import qualified Data.Serialize as Ser
 import qualified Data.ByteString as B
+import Data.ByteString.Unsafe
 import Data.List
 import My.Control.Monad
 import My.Control.Monad.State hiding ((<.>))
@@ -34,7 +36,7 @@ execute s = case action s of
   PrintVersion -> printVersion
   Compile -> print s >> doCompile s
   
-version = "0.9.0.2"
+version = "0.9.0.3"
 printHelp = putStrLn helpMsg
 printVersion = putStrLn $ "Alpha version "++version
   
@@ -57,8 +59,11 @@ doCompile opts = case programs opts of
       importLanguage compileLanguage language
       rootSym <- stateF languageF $ internSym root
       getAddressComp (outputArch opts) rootSym
-      chunks <- sortBy (comparing fst) $< M.elems $< gets compAddresses
-      undefined
+      (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
+      top <- gets compTop
+      contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size) 
+                                       | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
+      writeElf language contents
     compileLanguage name = do
       source <- fromMaybe (fail $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name
@@ -75,7 +80,7 @@ doCompile opts = case programs opts of
       let sTree = concat $ parseAlpha src str
       code <- mapM compileExpr sTree
       languageState $ modify $ \e -> exportLanguage $ e { loadCode = foldr concatCode [] code }
-      where compileExpr expr = print expr >> do
+      where compileExpr expr = print (fmap Str expr) >> do
               symExpr <- languageState $ envCast expr
               trExpr <- doTransform symExpr
               (code,imports) <- languageState $ compile Nothing trExpr
