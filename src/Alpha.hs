@@ -50,8 +50,8 @@ doCompile opts = case programs opts of
   progs -> mapM_ compileProgram progs
   where   
     languageFile language = languageDir opts</>language<.>"l"
-    findSource language = findM fileExist (concat [[base,base<.>"a"] | dir <- sourceDirs opts
-                                                                     , let base = dir</>language])
+    findSource language = findM doesFileExist (concat [[base,base<.>"a"] | dir <- sourceDirs opts
+                                                                         , let base = dir</>language])
     readProg s = let (a,':':b) = break (==':') s in (a,b)
         
     interactive = void $ compileFile "/dev/stdin"     
@@ -65,10 +65,11 @@ doCompile opts = case programs opts of
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
       writeElf language contents
     compileLanguage name = do
-      source <- fromMaybe (fail $ "Couldn't find source file for language "++name) $< findSource name
+      source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name
       b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
       if b then either error id $< Ser.decode $< B.readFile langFile else do 
+        putStrLn $ "Compiling language "++name
         lang <- compileFile source
         createDirectoryIfMissing True (dropFileName langFile)
         B.writeFile langFile (Ser.encode lang)
