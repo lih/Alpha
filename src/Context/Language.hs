@@ -63,7 +63,7 @@ importLanguage getImport loadImport imp = merge imp
       loadImport l'
     mergeLanguage l' = doF languageF $ do
       let Language { symMap = syms' , modMap = mods' , maxID = mi' } = l'
-      modify $ \l -> l { symMap = foldl' (\m (k,v) -> BM.insert k v m) (symMap l) (BM.toList syms') }
+      mapM_ (state . internSym) $ BM.keys syms'
       Language { maxID = mi, symMap = syms } <- get
       let aliases = [(i'+mi,fromJust $ BM.lookup s' syms) 
                     | (s',i') <- BM.toList syms']
@@ -95,16 +95,15 @@ exportLanguage e = e {
   loadCode = translate trans (loadCode e)
   }
   where set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
-        ex = exports e ; eqs = equivMap e
+        Language { exports = ex, equivMap = eqs } = e
         vals' = M.map (translate trans) $ M.intersection (valMap e) (set2Map ex)
         trans s = fromMaybe s $ M.lookup s eqs
         refs = S.fromList $ concatMap references $ M.elems vals'
         exportNameP _ s = (S.member s ex || S.member s refs)
                           && not (M.member s eqs)
-        references val = case val of
-          Verb code -> codeRefs code 
-          Noun size init -> codeRefs size ++ codeRefs init
-          _ -> []
+        references (Verb code) = codeRefs code 
+        references (Noun size init) = codeRefs size ++ codeRefs init
+        references _ = []
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
