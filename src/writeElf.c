@@ -4,6 +4,10 @@
 
 #define SETSTRUCT(v,t,vals...) { t tmp = vals; v = tmp; }
 
+typedef unsigned char byte;
+
+void writeElf(int fd,byte* data,int dataSize);
+
 void writeElf(int fd,byte* data,int dataSize) {
    Elf64_Ehdr eh;    Elf64_Phdr pht[1];
    unsigned int hSize = sizeof(eh) + sizeof(pht);

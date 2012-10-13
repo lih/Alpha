@@ -24,4 +24,4 @@ executable alpha
   main-is:        Alpha.hs
   other-modules:  Alpha, Compile, Compile.State, Compile.Utils, Context, Context.Language, Context.Types, Elf, ID, My.Control.Monad, My.Control.Monad.State, My.Control.Monad.TimeLine, My.Data.Graph, My.Data.List, My.Prelude, Options, PCode, PCode.Builtin, PCode.Instruction, PCode.Value, Serialize, Specialize, Specialize.Architecture, Specialize.Types, Specialize.X86, Syntax, Syntax.Parse, Translate
   hs-source-dirs: src
-  c-sources:      src/writeElf.c src/writeElf.h
+  c-sources:      src/writeElf.c
