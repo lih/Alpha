@@ -1,6 +1,5 @@
 #include <unistd.h>
 #include <libelf.h>
-#include "writeElf.h"
 
 #define SETSTRUCT(v,t,vals...) { t tmp = vals; v = tmp; }
 
