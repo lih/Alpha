@@ -56,7 +56,7 @@ doCompile opts = case programs opts of
         
     interactive = void $ compileFile "/dev/stdin"     
     compileProgram (readProg -> (language,root)) = withDefaultContext $ do
-      importLanguage compileLanguage language
+      importLanguage compileLanguage (const $ return ()) language
       rootSym <- stateF languageF $ internSym root
       getAddressComp (outputArch opts) rootSym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -64,7 +64,7 @@ doCompile opts = case programs opts of
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size) 
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
       writeElf language contents
-    compileLanguage name = do
+    compileLanguage name = debugM $ do
       source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name
       b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
@@ -83,9 +83,10 @@ doCompile opts = case programs opts of
       languageState $ modify $ \e -> exportLanguage $ e { loadCode = foldr concatCode [] code }
       where compileExpr expr = print (fmap Str expr) >> do
               symExpr <- languageState $ envCast expr
+              print symExpr
               trExpr <- doTransform symExpr
               (code,imports) <- languageState $ compile Nothing trExpr
-              mapM_ (importLanguage loadLanguage) imports
+              mapM_ (importLanguage compileLanguage (execCode . loadCode)) imports
               execCode code 
               return code
       

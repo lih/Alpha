@@ -4,7 +4,7 @@ configure:
 	cabal configure
 
 find:
-	find src | xargs egrep -n '[a-z]F\b.* =' 
+	egrep -Rn 'fromJust' src 
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

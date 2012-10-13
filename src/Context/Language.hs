@@ -54,16 +54,16 @@ envCast t = traverseM (state . intern) t
   where intern "?" = createSym
         intern str = internSym str
               
-importLanguage :: MonadState Context m => (String -> m Language) -> String -> m ()
-importLanguage getImport imp = merge imp
+importLanguage getImport loadImport imp = merge imp
   where 
-    getImp imp = do
+    merge imp = gets language >>= \l -> unless (imp`isImport`l) $ do
       l' <- getImport imp
       mapM_ merge [imp | (imp,_) <- BM.toList (modMap l')]
-      return l'
-    merge imp = gets language >>= \l -> if imp`isImport`l then return () else getImp imp >>= \l' -> doF languageF $ do
-      let syms' = symMap l' ; mods' = modMap l' ; mi' = maxID l'
-      mapM (state . internSym) (BM.keys syms')
+      mergeLanguage l'
+      loadImport l'
+    mergeLanguage l' = doF languageF $ do
+      let Language { symMap = syms' , modMap = mods' , maxID = mi' } = l'
+      modify $ \l -> l { symMap = foldl' (\m (k,v) -> BM.insert k v m) (symMap l) (BM.toList syms') }
       Language { maxID = mi, symMap = syms } <- get
       let aliases = [(i'+mi,fromJust $ BM.lookup s' syms) 
                     | (s',i') <- BM.toList syms']
