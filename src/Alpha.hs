@@ -50,7 +50,7 @@ doCompile opts = case programs opts of
   progs -> mapM_ compileProgram progs
   where   
     languageFile language = languageDir opts</>language<.>"l"
-    findSource language = findM doesFileExist (concat [[base,base<.>"a"] | dir <- sourceDirs opts
+    findSource language = findM doesFileExist (concat [[base<.>"a",base] | dir <- sourceDirs opts
                                                                          , let base = dir</>language])
     readProg s = let (a,':':b) = break (==':') s in (a,b)
         

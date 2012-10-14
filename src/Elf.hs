@@ -1,5 +1,5 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-module Elf (writeElf) where
+module Elf (writeElf,entryAddress) where
 
 import Foreign
 import Foreign.C
@@ -10,7 +10,9 @@ import Data.ByteString.Unsafe
 
 foreign import ccall "writeElf" 
   c_writeElf :: CInt -> Ptr CChar -> CInt -> IO ()
-              
+foreign import ccall "entryAddress"
+  entryAddress :: Int
+                
 outFileMode = ownerModes + groupReadMode + groupExecuteMode + otherReadMode + otherExecuteMode
   where (+) = unionFileModes
                
