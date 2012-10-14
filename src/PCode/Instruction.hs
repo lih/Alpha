@@ -5,7 +5,7 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe
 import Data.Array
-import Data.Tree
+import My.Data.Tree
 import qualified Data.Set as S
 import PCode.Builtin
 import PCode.Value
@@ -59,10 +59,6 @@ navigate code = (bs,instr,nexts,prevs)
         nexts n = [n+1]
         prevs n = accumArray (flip (:)) [] bs [(n,i) | i <- [bMin..bMax], n <- nexts i] ! n
 
-spanningTree seed nexts = evalState (unfoldTreeM unfold seed) S.empty
-  where unfold seed = do modify (S.insert seed) ; s <- get 
-                         return (seed,[n | n <- nexts seed, not $ S.member n s])
-            
 spanArray bs tree = array bs (assocs Nothing tree)
   where assocs p (Node a subs) = (a,(p,map rootLabel subs)):concatMap (assocs (Just a)) subs
 codeRefs (Code args code ret) = refs code (bindSyms ret++concatMap bindSyms args)

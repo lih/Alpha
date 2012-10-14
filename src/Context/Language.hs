@@ -13,6 +13,7 @@ import qualified Data.Bimap as BM
 import My.Control.Monad
 import My.Control.Monad.State
 import Control.Monad.Trans
+import qualified Data.Traversable as T
 
 import ID
 import PCode
@@ -50,7 +51,7 @@ internSym s e = runState (st $ BM.lookup s (symMap e)) e
           modifyF symsF (BM.insert s i)  
           return i
 
-envCast t = traverseM (state . intern) t
+envCast t = T.mapM (state . intern) t
   where intern "?" = createSym
         intern str = internSym str
               

@@ -7,9 +7,10 @@ import Specialize.Architecture
 import ID
 import Data.ByteString
 
-retCode = exit
-  where ret = [0xC3]
-        exit = [0xB8, 0x01,0x00,0x00,0x00
+retCode = ret
+  where ret = [0xc3]
+        exit = [0x31,0xdb
+               ,0x31,0xc0, 0xff,0xc0
                ,0xcd,0x80]        
 
 specialize :: Monad m => Architecture -> (ID -> m Int) -> Code -> (Int,m ByteString)

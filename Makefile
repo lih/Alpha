@@ -4,7 +4,7 @@ configure:
 	cabal configure
 
 find:
-	egrep -Rn 'fromJust' src 
+	egrep -Rn 'fmap' src 
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

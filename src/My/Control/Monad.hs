@@ -1,9 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module My.Control.Monad (module Control.Monad,($<),(>$),(>$<),(§),(§<),(>§),(>§<),(<&&>),(<||>),ifM,findM,traverseM) where
+module My.Control.Monad (module Control.Monad,($<),(>$),(>$<),(§),(§<),(>§),(>§<),(<&&>),(<||>),ifM,findM) where
 
 import Control.Monad
-import Data.Traversable
-import Control.Applicative
 
 ($<)  :: Monad m => (a -> b) -> m a -> m b
 (>$)  :: Monad m => m (a -> b) -> a -> m b
@@ -25,8 +23,6 @@ infixr 3 <||>
 
 findM p l = foldr fun (return Nothing) l
   where fun x ret = ifM (p x) (return $ Just x) ret
-
-traverseM f = unwrapMonad . traverse (WrapMonad . f)
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.
