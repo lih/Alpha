@@ -7,6 +7,7 @@ import Debug.Trace
 import My.Control.Monad
 
 debug x = traceShow x x
+debugM m = m >>= \x -> return (debug x)
 
 maybeToEither = maybe (Left undefined) Right
 eitherToMaybe = either (const Nothing) Just

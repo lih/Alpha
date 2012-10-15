@@ -13,6 +13,7 @@ import qualified Data.Bimap as BM
 import My.Control.Monad
 import My.Control.Monad.State
 import Control.Monad.Trans
+import qualified Data.Traversable as T
 
 import ID
 import PCode
@@ -50,20 +51,20 @@ internSym s e = runState (st $ BM.lookup s (symMap e)) e
           modifyF symsF (BM.insert s i)  
           return i
 
-envCast t = traverseM (state . intern) t
+envCast t = T.mapM (state . intern) t
   where intern "?" = createSym
         intern str = internSym str
               
-importLanguage :: MonadState Context m => (String -> m Language) -> String -> m ()
-importLanguage getImport imp = merge imp
+importLanguage getImport loadImport imp = merge imp
   where 
-    getImp imp = do
+    merge imp = gets language >>= \l -> unless (imp`isImport`l) $ do
       l' <- getImport imp
       mapM_ merge [imp | (imp,_) <- BM.toList (modMap l')]
-      return l'
-    merge imp = gets language >>= \l -> if imp`isImport`l then return () else getImp imp >>= \l' -> doF languageF $ do
-      let syms' = symMap l' ; mods' = modMap l' ; mi' = maxID l'
-      mapM (state . internSym) (BM.keys syms')
+      mergeLanguage l'
+      loadImport l'
+    mergeLanguage l' = doF languageF $ do
+      let Language { symMap = syms' , modMap = mods' , maxID = mi' } = l'
+      mapM_ (state . internSym) $ BM.keys syms'
       Language { maxID = mi, symMap = syms } <- get
       let aliases = [(i'+mi,fromJust $ BM.lookup s' syms) 
                     | (s',i') <- BM.toList syms']
@@ -95,16 +96,15 @@ exportLanguage e = e {
   loadCode = translate trans (loadCode e)
   }
   where set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
-        ex = exports e ; eqs = equivMap e
+        Language { exports = ex, equivMap = eqs } = e
         vals' = M.map (translate trans) $ M.intersection (valMap e) (set2Map ex)
         trans s = fromMaybe s $ M.lookup s eqs
         refs = S.fromList $ concatMap references $ M.elems vals'
         exportNameP _ s = (S.member s ex || S.member s refs)
                           && not (M.member s eqs)
-        references val = case val of
-          Verb code -> codeRefs code 
-          Noun size init -> codeRefs size ++ codeRefs init
-          _ -> []
+        references (Verb code) = codeRefs code 
+        references (Noun size init) = codeRefs size ++ codeRefs init
+        references _ = []
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

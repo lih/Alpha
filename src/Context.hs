@@ -24,6 +24,7 @@ import Context.Language
 import Specialize
 import PCode
 import ID
+import Elf(entryAddress)
 import Syntax
 import Specialize.Architecture
 
@@ -62,7 +63,7 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
 
 doTransform syn = gets transform >>= ($syn)
 
-initialContext = C lang jitA M.empty 0 return
+initialContext = C lang jitA M.empty entryAddress return
   where (lang,jitA) = execState (mapM_ st initialBindings) (empty,M.empty)
           where st (s,v) = do
                   i <- stateF fstF (internSym s) 

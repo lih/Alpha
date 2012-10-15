@@ -10,7 +10,7 @@ module Compile.State(
   getSymName,getSymVal,
   singleCode,
   isBackEdge,
-  getNodeList,getLanguage,
+  getNodeList,getContext,
   createEdge,deleteEdge,
   createNode,deleteNode,
   nullCode,nullCodeVal,
@@ -23,7 +23,7 @@ import PCode
 import My.Control.Monad.State
 import My.Control.Monad
 import ID
-import My.Data.Graph hiding (deleteEdge,deleteNode,getLanguage,Language,empty)
+import My.Data.Graph hiding (deleteEdge,deleteNode,getContext,empty)
 import Context
 import Context.Language as L
 
@@ -76,7 +76,7 @@ nullCode      = nullCodeVal NullVal
 nullCodeVal v = mkNoop >>= \n -> return (v,singleCode n)
 
 getNodeList  = getsF depGraphF nodeList
-getLanguage n = getsF depGraphF (G.getLanguage n)
+getContext n = getsF depGraphF (G.getContext n)
 
 createNode x       = stateF depGraphF (G.insertNode x)
 deleteNode n       = modifyF depGraphF (G.deleteNode n)

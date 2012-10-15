@@ -50,13 +50,13 @@ doCompile opts = case programs opts of
   progs -> mapM_ compileProgram progs
   where   
     languageFile language = languageDir opts</>language<.>"l"
-    findSource language = findM fileExist (concat [[base,base<.>"a"] | dir <- sourceDirs opts
-                                                                     , let base = dir</>language])
+    findSource language = findM doesFileExist (concat [[base<.>"a",base] | dir <- sourceDirs opts
+                                                                         , let base = dir</>language])
     readProg s = let (a,':':b) = break (==':') s in (a,b)
         
     interactive = void $ compileFile "/dev/stdin"     
     compileProgram (readProg -> (language,root)) = withDefaultContext $ do
-      importLanguage compileLanguage language
+      importLanguage compileLanguage (const $ return ()) language
       rootSym <- stateF languageF $ internSym root
       getAddressComp (outputArch opts) rootSym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -64,11 +64,12 @@ doCompile opts = case programs opts of
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size) 
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
       writeElf language contents
-    compileLanguage name = do
-      source <- fromMaybe (fail $ "Couldn't find source file for language "++name) $< findSource name
+    compileLanguage name = debugM $ do
+      source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name
       b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
       if b then either error id $< Ser.decode $< B.readFile langFile else do 
+        putStrLn $ "Compiling language "++name
         lang <- compileFile source
         createDirectoryIfMissing True (dropFileName langFile)
         B.writeFile langFile (Ser.encode lang)
@@ -82,9 +83,10 @@ doCompile opts = case programs opts of
       languageState $ modify $ \e -> exportLanguage $ e { loadCode = foldr concatCode [] code }
       where compileExpr expr = print (fmap Str expr) >> do
               symExpr <- languageState $ envCast expr
+              print symExpr
               trExpr <- doTransform symExpr
               (code,imports) <- languageState $ compile Nothing trExpr
-              mapM_ (importLanguage loadLanguage) imports
+              mapM_ (importLanguage compileLanguage (execCode . loadCode)) imports
               execCode code 
               return code
       
