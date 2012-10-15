@@ -21,7 +21,7 @@ data Architecture = Arch {
   archName           :: String,
   archDefaultSize    :: Int,
   archInitialPast    :: [BindVar] -> Past,
-  archCompileCase    :: [Int] -> (Int -> ((Int,Int),Past)) -> AllocInstr,
+  archCompileCase    :: [Int] -> (Int -> (Int,Int,Past)) -> AllocInstr,
   archCompileBuiltin :: Builtin -> ID -> [Value] -> AllocInstr
   }
 data Past = Past { 
@@ -34,4 +34,4 @@ data Future = Future {
   fregs :: Map ID Register
   }
 type Allocate = TimeLine Past Future
-type AllocInstr = Monad m => Allocate (Int,m ByteString)
+type AllocInstr = Monad m => Allocate (Int,Int,m ByteString)
