@@ -4,12 +4,15 @@ module Specialize.Types(
   module PCode, module ID,
   Register(..),Address(..), 
   Architecture(..), 
-  Past(..),Future(..),
-  Allocate(..)) where
+  Info(..), Past(..),Future(..),
+  stackF,bindingsF, emptyFuture) where
 
+import Data.Relation
 import Data.ByteString
 import Data.Word
 import My.Control.Monad.TimeLine
+import My.Control.Monad.State
+import Control.Monad.Trans.Reader
 import PCode
 import ID
 import Data.Map
@@ -18,20 +21,26 @@ import Data.Set
 type Register = Int
 type Address = (Maybe ID,Int)
 data Architecture = Arch {
-  archName           :: String,
-  archDefaultSize    :: Int,
-  archInitialPast    :: [BindVar] -> Past,
-  archCompileCase    :: [Int] -> (Int -> (Int,Int,Past)) -> AllocInstr,
-  archCompileBuiltin :: Builtin -> ID -> [Value] -> AllocInstr
+  archName         :: String,
+  archDefaultSize  :: Int,
+  archInitials     :: [BindVar] -> BindVar -> (Info,Past,Future),
+  archCompileInstr :: Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
   }
 data Past = Past { 
-  addresses :: Map ID Address,
-  bindings  :: Map ID Register,
-  clobber   :: Map ID [ID],
-  stack     :: [(Bool,Int)]
+  registers  :: Map ID Register,
+  stackAddrs :: Map ID Address,
+  stack      :: [(Bool,Int)]
   }
 data Future = Future {
-  fregs :: Map ID Register
+  fregisters :: Map ID Register
   }
-type Allocate = TimeLine Past Future
-type AllocInstr = Monad m => Allocate (Int,Int,m ByteString)
+data Info = Info {
+  bindings   :: Map ID Address,
+  clobbers   :: Relation ID ID,
+  references :: Relation ID ID
+  }
+
+stackF = Field (stack,\s p -> p { stack = s })
+bindingsF = Field (bindings,\a p -> p { bindings = a })
+
+emptyFuture = Future Data.Map.empty

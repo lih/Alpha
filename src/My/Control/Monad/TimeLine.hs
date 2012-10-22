@@ -25,7 +25,6 @@ instance (MonadPlus m,MonadFix m) => MonadPlus (TimeLineT p f m) where
   mzero = lift $ mzero
   mplus a b = TimeLineT (\t -> runTimeLineT a t `mplus` runTimeLineT b t)
 
-
 timeLine tl = TimeLineT (Identity . tl)
 runTimeLine tl x = runIdentity $ runTimeLineT tl x
 

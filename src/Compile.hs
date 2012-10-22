@@ -59,7 +59,9 @@ compileAxiom XBind _ args = doBind args
   where 
     doBind' bVars compile = compile *>>= \v -> do 
       bnd <- bindFromSyntax bVars
-      n <- createNode (Instr $ PCode.Bind bnd v)
+      let val (SymVal Value s) = Just s
+          val _ = Nothing
+      n <- createNode (Instr $ PCode.Bind bnd (val v))
       return (NullVal,singleCode n)
     doBind [bVars] = doBind' bVars $ nullCode
     doBind [bVars,expr] = doBind' bVars $ newVar >>= \v -> compile' (Just v) expr

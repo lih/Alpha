@@ -22,7 +22,7 @@ instance Translatable C.Value where
 instance Translatable Instruction where
   translate tr (Op b v vs) = Op b (translate tr v) (translate tr vs)
   translate tr (Branch v as) = Branch (translate tr v) as
-  translate tr (Bind bv v) = Bind (translate tr bv) (translate tr v)
+  translate tr (Bind bv v) = Bind (translate tr bv) (fmap (translate tr) v)
   translate tr Noop = Noop
 instance Translatable PCode.Value where
   translate tr (SymVal t id) = SymVal t (translate tr id)

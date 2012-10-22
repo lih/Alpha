@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, ParallelListComp #-}
 module PCode.Instruction where
 
 import Control.Monad.State
@@ -20,7 +20,7 @@ data BindVar = BindVar {
   }
 data Instruction = Op Builtin ID [Value]
                  | Branch Value [Addr]
-                 | Bind BindVar Value
+                 | Bind BindVar (Maybe ID)
                  | Noop
 data Code = Code [BindVar] [Instruction] BindVar
             deriving Show
@@ -33,13 +33,20 @@ isBranch _ = False
 bindSyms bv = bindSym bv : concatMap bindSyms (map fst $ bindSubs bv)
 symBind s = BindVar s (0,1) 0 []
 instrVals (Op _ _ vs) = vs
-instrVals (Bind _ v) = [v]
+instrVals (Bind _ v) = map (SymVal Value) $ maybeToList v
 instrVals (Branch v _) = [v]
 instrVals _ = []
 instrVars (Op _ v _) = [v]
 instrVars (Bind v _) = bindSyms v
 instrVars _ = []
 
+flattenBind def = flatten 
+  where sizeOf (bindSize -> (s,sr)) = s+sr*def
+        flatten bv@(BindVar s _ p subs) = (s,0,sizeOf bv):concat [
+           [(s,n+n0,sz) | (s,n,sz) <- flatten bv]
+           | (bv,_) <- subs
+           | n0 <- scanl (+) p [n*sizeOf bv | (bv,n) <- subs]]
+         
 set v val = Op BSet v [val]
 call v f args = Op BCall v (f:args)
 ret = Branch NullVal []
