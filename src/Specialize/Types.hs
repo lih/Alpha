@@ -23,8 +23,8 @@ type Address = (Maybe ID,Int)
 data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
-  archInitials     :: [BindVar] -> BindVar -> (Info,Past,Future),
-  archCompileInstr :: Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
+  archInitials     :: [BindVar] -> BindVar -> (Past,Future),
+  archCompileInstr :: (ID -> IO Int) -> Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
   }
 data Past = Past { 
   registers  :: Map ID Register,
@@ -36,9 +36,10 @@ data Future = Future {
   }
 data Info = Info {
   bindings   :: Map ID Address,
-  clobbers   :: Relation ID ID,
-  references :: Relation ID ID
+  references :: Relation ID ID,
+  actives    :: Set ID
   }
+          deriving Show
 
 stackF = Field (stack,\s p -> p { stack = s })
 bindingsF = Field (bindings,\a p -> p { bindings = a })

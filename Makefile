@@ -1,10 +1,13 @@
-all: 
+all: $(shell find src -name '*.hs')
 	cabal build
 configure:
 	cabal configure
 
+run: all
+	cd exec && ../bin/alpha < in
+
 find:
-	egrep -Rn 'PCode' src 
+	egrep -Rn 'undefined' src 
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

@@ -50,6 +50,8 @@ flattenBind def = flatten
 set v val = Op BSet v [val]
 call v f args = Op BCall v (f:args)
 ret = Branch NullVal []
+isRet (Branch NullVal []) = True
+isRet _ = False
 
 concatCode c1 [] = c1
 concatCode c1 c2 = map (f g1) c1 ++ map (f g2) c2

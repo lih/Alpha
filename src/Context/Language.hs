@@ -23,28 +23,28 @@ import Translate
 showTable name showLine contents = (name++":"):map ("  "++) (concatMap showLine contents)
 instance Show Language where
   show e = intercalate "\n" $ showTable "Context" id [
-    ["Max ID: "++show (maxID e)],
-    showTable "Symbols" (\(s,i) -> [s++" -> "++show i]) $ BM.toList (symMap e),
-    showTable "Aliases" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (aliasMap e),
-    showTable "Equivs" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (equivMap e),
-    showTable "Modules" (\(s,IDRange r) -> [s++" -> "++show r]) $ BM.toList (modMap e),
-    showTable "Values" (\(i,v) -> [show i++" -> "++show v]) $ M.toList (valMap e),
-    ["Exports: "++show (exports e)],
-    ["Load code: "++show (loadCode e)]]
+    ["Max ID: "++show (maxIDL e)],
+    showTable "Symbols" (\(s,i) -> [s++" -> "++show i]) $ BM.toList (symbolsL e),
+    showTable "Aliases" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (aliasesL e),
+    showTable "Equivs" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (equivsL e),
+    showTable "Modules" (\(s,IDRange r) -> [s++" -> "++show r]) $ BM.toList (languagesL e),
+    showTable "Values" (\(i,v) -> [show i++" -> "++show v]) $ M.toList (valuesL e),
+    ["Exports: "++show (exportsL e)],
+    ["Load code: "++show (initializeL e)]]
 
-empty = Language (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty undefined
+empty = Language (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty []
 
-createSym e@(Language { maxID = m }) = (m,e { maxID = succ m })
-setSymVal id v e = e { valMap = M.insert id v (valMap e) }
-lookupSymName id e = BM.lookupR id (symMap e)
-lookupSymVal id e = fromMaybe NoValue $ M.lookup id (valMap e) 
-lookupSymMod id e = BM.lookupR (singleRange id) (modMap e) 
-addExport id e = e { exports = S.insert id (exports e) }
-getImports e = map fst $ BM.toList $ modMap e
-isImport im e = BM.member im (modMap e)
+createSym e@(Language { maxIDL = m }) = (m,e { maxIDL = succ m })
+setSymVal id v e = e { valuesL = M.insert id v (valuesL e) }
+lookupSymName id e = BM.lookupR id (symbolsL e)
+lookupSymVal id e = fromMaybe NoValue $ M.lookup id (valuesL e) 
+lookupSymMod id e = BM.lookupR (singleRange id) (languagesL e) 
+addExport id e = e { exportsL = S.insert id (exportsL e) }
+getImports e = map fst $ BM.toList $ languagesL e
+isImport im e = BM.member im (languagesL e)
 exportSymVal id v = setSymVal id v . addExport id
 
-internSym s e = runState (st $ BM.lookup s (symMap e)) e 
+internSym s e = runState (st $ BM.lookup s (symbolsL e)) e 
   where st (Just id) = return id
         st _ = do
           i <- state createSym 
@@ -59,45 +59,45 @@ importLanguage getImport loadImport imp = merge imp
   where 
     merge imp = gets language >>= \l -> unless (imp`isImport`l) $ do
       l' <- getImport imp
-      mapM_ merge [imp | (imp,_) <- BM.toList (modMap l')]
+      mapM_ merge [imp | (imp,_) <- BM.toList (languagesL l')]
       mergeLanguage l'
       loadImport l'
     mergeLanguage l' = doF languageF $ do
-      let Language { symMap = syms' , modMap = mods' , maxID = mi' } = l'
+      let Language { symbolsL = syms' , languagesL = mods' , maxIDL = mi' } = l'
       mapM_ (state . internSym) $ BM.keys syms'
-      Language { maxID = mi, symMap = syms } <- get
+      Language { maxIDL = mi, symbolsL = syms } <- get
       let aliases = [(i'+mi,fromJust $ BM.lookup s' syms) 
                     | (s',i') <- BM.toList syms']
       modify $ \l -> l {
-        maxID = mi+mi',
-        aliasMap = aliasMap l `M.union` M.fromList aliases,
-        equivMap = equivMap l `M.union` M.fromList (map swap aliases)
+        maxIDL = mi+mi',
+        aliasesL = aliasesL l `M.union` M.fromList aliases,
+        equivsL = equivsL l `M.union` M.fromList (map swap aliases)
         }
-      Language { aliasMap = al , modMap = mods } <- get
+      Language { aliasesL = al , languagesL = mods } <- get
       let tr s = fromMaybe (tr' s) $ M.lookup (tr' s) al
           tr' s' = fromMaybe (s' + mi) $ do
             m <- lookupSymMod s' l'
             IDRange (r,_) <- BM.lookup m mods
             IDRange (r',_) <- BM.lookup m mods'
             return $ s'-r'+r
-          newVals = M.mapKeys tr $ M.map (translate tr) $ valMap l'
+          newVals = M.mapKeys tr $ M.map (translate tr) $ valuesL l'
       modify $ \l -> l {
-        modMap = BM.insert imp (IDRange (mi,mi+mi')) (modMap l),
-        valMap = M.unionWith (\_ a -> a) (valMap l) newVals,
-        exports = S.difference (exports l) (M.keysSet newVals) 
+        languagesL = BM.insert imp (IDRange (mi,mi+mi')) (languagesL l),
+        valuesL    = M.unionWith (\_ a -> a) (valuesL l) newVals,
+        exportsL   = S.difference (exportsL l) (M.keysSet newVals) 
         }
           
 exportLanguage e = e {
-  symMap   = BM.filter exportNameP (symMap e),
-  valMap   = vals',
-  aliasMap = M.empty,
-  equivMap = M.empty,
-  exports  = S.empty,
-  loadCode = translate trans (loadCode e)
+  symbolsL    = BM.filter exportNameP (symbolsL e),
+  valuesL     = vals',
+  aliasesL    = M.empty,
+  equivsL     = M.empty,
+  exportsL    = S.empty,
+  initializeL = translate trans (initializeL e)
   }
   where set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
-        Language { exports = ex, equivMap = eqs } = e
-        vals' = M.map (translate trans) $ M.intersection (valMap e) (set2Map ex)
+        Language { exportsL = ex, equivsL = eqs } = e
+        vals' = M.map (translate trans) $ M.intersection (valuesL e) (set2Map ex)
         trans s = fromMaybe s $ M.lookup s eqs
         refs = S.fromList $ concatMap references $ M.elems vals'
         exportNameP _ s = (S.member s ex || S.member s refs)

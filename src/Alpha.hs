@@ -74,19 +74,19 @@ doCompile opts = case programs opts of
         createDirectoryIfMissing True (dropFileName langFile)
         B.writeFile langFile (Ser.encode lang)
         return lang
-    loadLanguage name = compileLanguage name >>= execCode . loadCode >> languageState get
+    loadLanguage name = compileLanguage name >>= execCode . initializeL >> languageState get
     
     compileFile src = withDefaultContext $ (>> gets language) $ do 
       str <- readFile src
       let sTree = concat $ parseAlpha src str
       code <- mapM compileExpr sTree
-      languageState $ modify $ \e -> exportLanguage $ e { loadCode = foldr concatCode [] code }
+      languageState $ modify $ \e -> exportLanguage $ e { initializeL = foldr concatCode [] code }
       where compileExpr expr = print (fmap Str expr) >> do
               symExpr <- languageState $ envCast expr
               print symExpr
               trExpr <- doTransform symExpr
               (code,imports) <- languageState $ compile Nothing trExpr
-              mapM_ (importLanguage compileLanguage (execCode . loadCode)) imports
+              mapM_ (importLanguage compileLanguage (execCode . initializeL)) imports
               execCode code 
               return code
       

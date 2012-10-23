@@ -24,17 +24,17 @@ data Value = Axiom Axiom
            deriving Show
 
 data Language = Language {
-  maxID    :: ID,
-  symMap   :: Bimap String ID,
-  aliasMap :: Map ID ID,
-  equivMap :: Map ID ID,
-  modMap   :: Bimap String IDRange,
-  valMap   :: Map ID Context.Types.Value,
-  exports  :: Set ID,
-  loadCode :: [Instruction]
+  maxIDL      :: ID,
+  symbolsL    :: Bimap String ID,
+  aliasesL    :: Map ID ID,
+  equivsL     :: Map ID ID,
+  languagesL  :: Bimap String IDRange,
+  valuesL     :: Map ID Context.Types.Value,
+  exportsL    :: Set ID,
+  initializeL :: [Instruction]
   }
-symsF = Field (symMap,\s ce -> ce { symMap = s })
-valsF = Field (valMap,\v ce -> ce { valMap = v })
+symsF = Field (symbolsL,\s ce -> ce { symbolsL = s })
+valsF = Field (valuesL,\v ce -> ce { valuesL = v })
 
 data Context = C {
   language      :: Language,
