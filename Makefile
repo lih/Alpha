@@ -1,5 +1,8 @@
-all: $(shell find src -name '*.hs')
+all: bin/alpha
+
+bin/alpha: $(shell find src -name '*.hs')
 	cabal build
+
 configure:
 	cabal configure
 

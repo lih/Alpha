@@ -2,7 +2,7 @@
 module Specialize.Types(
   module Data.Word, module My.Control.Monad.TimeLine,
   module PCode, module ID,
-  Register(..),Address(..), 
+  Register(..),
   Architecture(..), 
   Info(..), Past(..),Future(..),
   stackF,bindingsF, emptyFuture) where
@@ -19,7 +19,6 @@ import Data.Map
 import Data.Set
 
 type Register = Int
-type Address = (Maybe ID,Int)
 data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
@@ -28,16 +27,16 @@ data Architecture = Arch {
   }
 data Past = Past { 
   registers  :: Map ID Register,
-  stackAddrs :: Map ID Address,
+  stackAddrs :: Map ID Int,
   stack      :: [(Bool,Int)]
   }
 data Future = Future {
   fregisters :: Map ID Register
   }
 data Info = Info {
-  bindings   :: Map ID Address,
-  references :: Relation ID ID,
-  actives    :: Set ID
+  bindings   :: Map ID (ID,Int),
+  actives    :: Set ID,
+  clobbers   :: Relation ID ID
   }
           deriving Show
 

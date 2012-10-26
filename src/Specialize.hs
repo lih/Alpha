@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes, ParallelListComp, TupleSections #-}
 module Specialize(specialize) where
 
+import Data.Monoid
 import Control.Arrow
 import Context.Types
 import Control.Monad.Trans.Reader
@@ -33,10 +34,10 @@ retCode = ret
                ,0x31,0xc0, 0xff,0xc0
                ,0xcd,0x80]        
 
-specialize arch assoc (Code args code retVar) = seq (unsafePerformIO $ print code >> print (fmap actives infos)) foo
+specialize arch assoc (Code args code retVar) = foo
   where 
     foo = (sum sizes,B.concat $< sequence codes)
-    -- ret = (length retCode, return (B.pack retCode))
+    -- foo = (length retCode, return (B.pack retCode))
     (estimates,sizes,codes) = unzip3 [v | Right (_,v) <- elems instructions]
     (past,future) = archInitials arch args retVar
     (bounds,instr,nexts,prevs) = navigate code
@@ -57,25 +58,51 @@ specialize arch assoc (Code args code retVar) = seq (unsafePerformIO $ print cod
                                           Left f = initialArray ! j]
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
                         
-    infos = array bounds (fmap (\(k,i) -> (k,i { actives = act!k })) assocs)
-      where assocs = (0,info):concatMap f (nodeList codeTree)
-            info = Info M.empty R.empty S.empty
-            f (Node i subs) = [(j,merge (infos!i) (instr j)) | Node j _ <- subs] 
-            merge (Info bnd refs _) i = Info (newBnd i) (newRefs i) undefined
-              where newBnd (Bind bv (Just id)) = foldl (\m (k,v) -> M.insert k v m) bnd 
-                                                 [(s,(Just id,n)) | (s,n,_) <- flattenBind (archDefaultSize arch) bv]
-                    newBnd _ = bnd
-                    newRefs (Op _ v vs) = foldl (\r (a,b) -> R.insert a b r) refs (map (v,) relList)
-                      where relList = [s | SymVal Address s <- vs] ++ S.toList (S.unions [fromMaybe S.empty (R.lookupDom s refs) | SymVal Value s <- vs])
-                    newRefs _ = refs
-            act = saturate fun prevs nexts init start
+    infos = constA bounds Info `applyA` bindingsA `applyA` activesA `applyA` clobbersA
+      where treeArray merge seed = ret
+              where assocs = (0,seed):concatMap f (nodeList codeTree)
+                    f (Node i subs) = [(j,merge j (ret!i) (instr j)) | Node j _ <- subs] 
+                    ret = array bounds assocs
+            parents i v = v:maybe [] (parents i) (fmap fst $ M.lookup v (bindingsA!i))
+            bindingsA = treeArray merge M.empty
+              where merge _ bnd (Bind bv (Just id)) = foldl (\m (k,v) -> M.insert k v m) bnd 
+                                                    [(s,(id,n)) | (s,n,_) <- flattenBind (archDefaultSize arch) bv]
+                    merge _ bnd _ = bnd
+            activesA = saturate fun prevs nexts init start
               where init = accumArray const S.empty bounds [] 
-                    start = concat [prevs i | i <- indices infos, isRet (instr i)]
+                    start = concat [prevs i | i <- indices init, isRet (instr i)]
                     fun i a = addActives (instr i) $ S.unions (map (a!) (nexts i))
-                      where addActives (Op _ v vs) s = foldr S.insert (S.delete v s) [s | SymVal Value s <- vs]
+                      where addActives (Op _ v vs) s = (s S.\\ clobbers i v) <> S.fromList [s' | SymVal Value s <- vs, s' <- parents i s]
                             addActives (Branch (SymVal Value id) _) s = S.insert id s
-                            addActives (Bind bv v) s = maybe id S.insert v $ foldr S.delete s (bindSyms bv)
+                            addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
+            clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)                
+            clobbersA = treeArray merge R.empty
+              where merge i r (Bind bv v) = insertManyR r' assocs
+                      where r' = restrict r (S.fromList (bindSyms bv))
+                            assocs = [ass | bv <- bindNodes bv
+                                          , s <- bindSyms bv
+                                          , ass <- [(bindSym bv,s),(s,bindSym bv)]]
+                                     ++[ass | ref <- maybe [] (S.toList . references i) v
+                                            , s <- maybe [fromJust v] S.toList (R.lookupRan ref r')
+                                            , ass <- [(s,ref),(ref,s)]]
+                    merge _ r _ = r
+            defaultRefs = S.singleton (ID (-1))
+            references i v = fromMaybe defaultRefs $ R.lookupRan v (referencesA!i)
+            referencesA = treeArray merge R.empty
+              where merge i r (Op _ v vs) = insertManyR r' (map (v,) $ S.toList refs)
+                      where r' = S.delete v (R.dom r) R.<| r
+                            refs = S.fromList [s | SymVal Address s <- vs] 
+                                   <> S.unions [fromMaybe defaultRefs (R.lookupRan s r) | SymVal Value s <- vs]
+                    merge _ r (Bind bv _) = restrict r (S.fromList (bindSyms bv))
+                    merge _ r _ = r
+
+restrict r s = (R.dom r S.\\ s) R.<| r R.|> (R.ran r S.\\ s)
+
+constA bs v = accumArray const v bs []
+zipWithA f a b = array (bounds a) [(i,f x y) | (i,x) <- assocs a | y <- elems b]
+applyA = zipWithA ($)
+insertManyR = foldl (\r (a,b) -> R.insert a b r)
 
 saturate fun nexts prevs init start = f init (array (bounds init) [(i,length $ prevs i) | i <- indices init]) start
   where f a d [] = a

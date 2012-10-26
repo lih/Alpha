@@ -55,17 +55,17 @@ compileAxiom XAlter _ forms = do
   codes <- sequence [compile' (Just v) e | Symbol v <- vars | e <- exprs] 
   let (starts,ends) = unzip $ map snd codes
   return (NullVal,(concat starts,concat ends))
-compileAxiom XBind _ args = doBind args
+compileAxiom XBind _ args = case args of
+  [bVars] -> doBind bVars Nothing
+  [bVars,expr] -> do
+    v <- newVar                    
+    compile' (Just v) expr *>> doBind bVars (Just v)
   where 
-    doBind' bVars compile = compile *>>= \v -> do 
+    doBind bVars val = do 
       bnd <- bindFromSyntax bVars
-      let val (SymVal Value s) = Just s
-          val _ = Nothing
-      n <- createNode (Instr $ PCode.Bind bnd (val v))
+      n <- createNode (Instr $ PCode.Bind bnd val)
       return (NullVal,singleCode n)
-    doBind [bVars] = doBind' bVars $ nullCode
-    doBind [bVars,expr] = doBind' bVars $ newVar >>= \v -> compile' (Just v) expr
-
+    
 compileAxiom XDo dest [] = nullCode
 compileAxiom XDo dest forms = do 
   let cs = reverse $ zipWith compile' (dest:repeat Nothing) (reverse forms)

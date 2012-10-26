@@ -31,6 +31,7 @@ isBranch (Branch _ _) = True
 isBranch _ = False
 
 bindSyms bv = bindSym bv : concatMap bindSyms (map fst $ bindSubs bv)
+bindNodes bv = bv:map fst (bindSubs bv)
 symBind s = BindVar s (0,1) 0 []
 instrVals (Op _ _ vs) = vs
 instrVals (Bind _ v) = map (SymVal Value) $ maybeToList v
