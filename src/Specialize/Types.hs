@@ -36,9 +36,9 @@ data Future = Future {
 data Info = Info {
   bindings   :: Map ID (ID,Int),
   actives    :: Set ID,
-  clobbers   :: Relation ID ID
+  clobbers   :: Relation ID ID,
+  branchInfo :: Int -> (Int,Int,Maybe Past)
   }
-          deriving Show
 
 stackF = Field (stack,\s p -> p { stack = s })
 bindingsF = Field (bindings,\a p -> p { bindings = a })

@@ -27,7 +27,7 @@ instance Show Language where
     showTable "Symbols" (\(s,i) -> [s++" -> "++show i]) $ BM.toList (symbolsL e),
     showTable "Aliases" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (aliasesL e),
     showTable "Equivs" (\(i,i') -> [show i++" -> "++show i']) $ M.toList (equivsL e),
-    showTable "Modules" (\(s,IDRange r) -> [s++" -> "++show r]) $ BM.toList (languagesL e),
+    showTable "Modules" (\(s,Range r) -> [s++" -> "++show r]) $ BM.toList (languagesL e),
     showTable "Values" (\(i,v) -> [show i++" -> "++show v]) $ M.toList (valuesL e),
     ["Exports: "++show (exportsL e)],
     ["Load code: "++show (initializeL e)]]
@@ -77,12 +77,12 @@ importLanguage getImport loadImport imp = merge imp
       let tr s = fromMaybe (tr' s) $ M.lookup (tr' s) al
           tr' s' = fromMaybe (s' + mi) $ do
             m <- lookupSymMod s' l'
-            IDRange (r,_) <- BM.lookup m mods
-            IDRange (r',_) <- BM.lookup m mods'
+            Range (r,_) <- BM.lookup m mods
+            Range (r',_) <- BM.lookup m mods'
             return $ s'-r'+r
           newVals = M.mapKeys tr $ M.map (translate tr) $ valuesL l'
       modify $ \l -> l {
-        languagesL = BM.insert imp (IDRange (mi,mi+mi')) (languagesL l),
+        languagesL = BM.insert imp (Range (mi,mi+mi')) (languagesL l),
         valuesL    = M.unionWith (\_ a -> a) (valuesL l) newVals,
         exportsL   = S.difference (exportsL l) (M.keysSet newVals) 
         }

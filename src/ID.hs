@@ -2,15 +2,14 @@ module ID where
 
 newtype ID = ID Int
            deriving (Ord,Eq)
-newtype IDRange = IDRange (ID,ID)
-                deriving Show
-                         
-singleRange i = IDRange (i,i)
+newtype Range a = Range (a,a)
 
-instance Eq IDRange where
+singleRange i = Range (i,i)
+
+instance Ord a => Eq (Range a) where
   a == b = compare a b == EQ
-instance Ord IDRange where
-  compare (IDRange (a,b)) (IDRange (a',b')) =  
+instance Ord a => Ord (Range a) where
+  compare (Range (a,b)) (Range (a',b')) =  
     if b<=a' then LT
     else if b'<=a then GT
          else EQ
@@ -28,7 +27,6 @@ instance Num ID where
   abs = undefined
   signum = undefined
   fromInteger n = ID $ fromInteger n
-
 
 -- Copyright (c) 2012, Coiffier Marc <marc.coiffier@gmail.com>
 -- All rights reserved.

@@ -20,7 +20,7 @@ deriving instance Generic Builtin
 deriving instance Generic C.Value
 deriving instance Generic Axiom
 deriving instance Generic ID
-deriving instance Generic IDRange
+deriving instance Generic (Range a)
 deriving instance Generic Language
 
 instance Serialize ValType
@@ -32,7 +32,7 @@ instance Serialize Builtin
 instance Serialize C.Value
 instance Serialize Axiom
 instance Serialize ID
-instance Serialize IDRange
+instance Serialize a => Serialize (Range a)
 instance (Ord a,Ord b,Serialize a,Serialize b) => Serialize (Bimap a b) where
   get = BM.fromList $< get 
   put = put . BM.toList

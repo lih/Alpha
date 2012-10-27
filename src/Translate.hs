@@ -11,8 +11,8 @@ class Translatable t where
 
 instance Translatable ID where
   translate = ($)
-instance Translatable IDRange where
-  translate t (IDRange (a,b)) = IDRange (t a,t b)
+instance Translatable a => Translatable (Range a) where
+  translate t (Range (a,b)) = Range (translate t a,translate t b)
 instance Translatable e => Translatable [e] where 
   translate tr l = map (translate tr) l
 instance Translatable C.Value where 

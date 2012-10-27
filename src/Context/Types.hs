@@ -28,7 +28,7 @@ data Language = Language {
   symbolsL    :: Bimap String ID,
   aliasesL    :: Map ID ID,
   equivsL     :: Map ID ID,
-  languagesL  :: Bimap String IDRange,
+  languagesL  :: Bimap String (Range ID),
   valuesL     :: Map ID Context.Types.Value,
   exportsL    :: Set ID,
   initializeL :: [Instruction]
