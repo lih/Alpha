@@ -46,7 +46,7 @@ specialize arch assoc (Code args code retVar) = foo
     positions = listArray bounds [(e,s) | e <- sums estimates, s <- sums sizes]
     codeTree = spanningTree 0 nexts
     runInstr i (p,f) past = runTimeLine (runReaderT (compile $ instr i) ((infos!i) getPos)) (p,f)
-      where compile = archCompileInstr arch assoc
+      where compile = archCompileInstr arch
             getPos j = (e'-e,d'-d,past j)
               where (e,d) = positions!i ; (e',d') = positions!j
                     
@@ -67,7 +67,7 @@ specialize arch assoc (Code args code retVar) = foo
                 f br = (n,fut):[(i,snd3 $ runInstr j (undefined,init!j) (const Nothing)) | (i,j) <- zip br (tail br)]
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
                         
-    infos = constA bounds Info `applyA` bindingsA `applyA` activesA `applyA` clobbersA
+    infos = constA bounds (Info assoc) `applyA` bindingsA `applyA` activesA `applyA` clobbersA
       where parent i v = fmap fst $ M.lookup v (bindingsA!i)
             bindingsA = treeArray next M.empty
               where next _ bnd (Bind bv (Just id)) = foldl (\m (k,v) -> M.insert k v m) bnd 

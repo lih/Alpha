@@ -1,4 +1,4 @@
-{-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction #-}
+{-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction, ViewPatterns #-}
 module Compile.State(
   module Context, 
   module My.Data.Graph,
@@ -104,7 +104,7 @@ makeBranch' typ val alts = do
   br <- createNode (BrPart val)
   let makeAlt n = createEdge (BranchAlt typ n) br
   case val of
-    IntVal i -> makeAlt 0 (if i+1<length alts then tail alts!!i else head alts)
+    IntVal (fromIntegral -> i) -> makeAlt 0 (if i+1<length alts then tail alts!!i else head alts)
     _        -> sequence_ $ zipWith makeAlt [0..] alts          
   return (NullVal,([br],[]))
 

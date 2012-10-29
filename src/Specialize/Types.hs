@@ -23,7 +23,7 @@ data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
   archInitials     :: [BindVar] -> BindVar -> (Past,Future),
-  archCompileInstr :: (ID -> IO Int) -> Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
+  archCompileInstr :: Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
   }
 data Past = Past { 
   registers  :: Map ID Register,
@@ -34,10 +34,11 @@ data Future = Future {
   fregisters :: Map ID Register
   }
 data Info = Info {
+  idValue    :: ID -> IO Int,
   bindings   :: Map ID (ID,Int),
   actives    :: Set ID,
   clobbers   :: Relation ID ID,
-  branchInfo :: Int -> (Int,Int,Maybe Past)
+  branchPos  :: Int -> (Int,Int,Maybe Past)
   }
 
 stackF = Field (stack,\s p -> p { stack = s })

@@ -1,21 +1,19 @@
 {-# LANGUAGE TupleSections, ParallelListComp, NoMonomorphismRestriction #-}
 module Compile(compile) where
 
-import Debug.Trace
-
-import My.Prelude
+import Compile.State as CS
+import Compile.Utils
+import Context.Language
+import Data.Either
+import Data.Maybe
+import ID
+import My.Control.Monad
+import My.Control.Monad.State
 import My.Data.Graph as G hiding (deleteEdge,deleteNode)
 import My.Data.List
-import My.Control.Monad.State
-import My.Control.Monad
-import Data.Maybe
-import Data.Either
+import My.Prelude
 import PCode
-import Context.Language
 import Syntax
-import ID
-import Compile.Utils
-import Compile.State as CS
 
 compile dest expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
   where st = do
