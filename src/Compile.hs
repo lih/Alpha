@@ -45,7 +45,9 @@ compileBy op dest args = do
   sequence_ [createEdge TimeDep n' n | (_,l) <- code, n' <- l]
   return (SymVal Value dest,(n:concatMap fst code,[n]))
 
-compileBuiltin = compileBy . Op
+compileBuiltin = compileBy . simplify
+  where simplify op dest [] = Op BSet dest [IntVal 0]
+        simplify op dest vars = Op op dest vars
 compileCall = compileBuiltin BCall
 
 compileAxiom XAlter _ forms = do

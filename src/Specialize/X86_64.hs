@@ -1,11 +1,14 @@
+{-# LANGUAGE RankNTypes, ViewPatterns #-}
 module Specialize.X86_64(arch_x86_64) where
 
 import Specialize.Types
 import Control.Monad
 import qualified Data.ByteString as B
 import Data.Bits
-import Data.List
+import My.Data.List
 import Data.Char
+import Data.Maybe
+import Data.Ord
 
 import My.Prelude
 
@@ -14,21 +17,23 @@ arch_x86_64 = Arch "x86_64" defSize defaults compile
 
 fromFields fs = foldl1 xor (zipWith shiftL (map (fromIntegral . fst) fs) (scanl (+) 0 $ map snd fs))
 
-showHex n = reverse $ map (intToDigit . fromIntegral . (`mod`16)) $ take 2 $ iterate (`div`16) (n :: Word8)  
+showHex n = reverse $ map (intToDigit . fromIntegral . (`mod`16)) $ take 2 $ iterate (`div`16) (n :: Word8)
 showCode = intercalate " " . map showHex
 
 argBytes :: Int -> Int -> (Maybe Integer) -> ([Word8],[Word8])
-argBytes r rm arg = (pre,suf)
-  where pre = [fromFields [(rm`shiftR`3,1),(0,1),(r`shiftR`3,1),(1,1),(4,4)]]
+argBytes = argBytesWide True
+argBytesWide w r rm arg = (pre,suf)
+  where pre = if rex/=0x40 then [rex] else []
+          where rex = fromFields [(rm`shiftR`3,1),(0,1),(r`shiftR`3,1),(fromEnum w,1),(4,4)]
         suf = [fromFields [(rm.&.7,3),(r.&.7,3),(mode,2)]] ++ sib ++ index
         (mode,index) = maybe (3,[]) fun arg
-          where fun n | n == 0 = if rm.&.7==5 then (1,[0]) else (0,[]) 
+          where fun n | n == 0 = if rm.&.7==5 then (1,[0]) else (0,[])
                       | n <= 128 && n > -128 = (1,[fromIntegral n])
                       | otherwise = (2,take 4 $ map (fromIntegral . (.&.255)) $ iterate (`shiftR`8) n)
         sib | mode/=3 && (rm.&.7 == 4) = [fromFields [(4,3),(4,3),(0,2)]]
             | otherwise = []
-        
-[rax,rbx,rsp,rbp,r12] = [0,3,4,5,12] :: [Int]
+
+[rax,rbx,rsp,rbp,r8,r12] = [0,3,4,5,8,12] :: [Int]
 
 op code d a b | d==b = op d a
               | otherwise = mov d a++op d b
@@ -41,16 +46,39 @@ codeFun codes n = head [(code,r,take s chop) | (s,(code,r)) <- codes, s>=size]
   where size = length $ takeWhile (>0) divs
         chop = map (.&.255) divs
         divs = map fromIntegral $ iterate (`shiftR`8) n
-         
-mov d s | d==s = [] 
+
+mov d s | d==s = []
         | otherwise = pre++[0x8B]++suf
   where (pre,suf) = argBytes d s Nothing
+movi d 0 = op [0x33] d d d
 movi d n = pre++[code]++suf++imm
   where (code,r,imm) = codeFun [(4,(0xC7,0)),(8,(0xB8`xor`(fromIntegral d.&.7),0))] n
         (pre,suf) | code==0xC7 = argBytes 0 d Nothing
                   | otherwise = (fst $ argBytes d 0 Nothing,[])
-ld d s n = pre++[0x8B]++suf
-  where (pre,suf) = argBytes d s (Just n)
+ld d (s,n,size) = load
+  where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
+          where weight l = sum $ zipWith f l $ sums l
+                  where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
+                          where m = s-((n+i)`mod`s)
+        load = concat $ zipWith ld (reverse $ zip (sums szs) szs) (True:repeat False)
+        ld (i,sz) fst = sh sz++code++suf
+          where (pre,suf) = argBytesWide (sz==8) d s (Just (n+i))
+                code = pre++fromJust (lookup sz [(8,[0x8b]),(4,[0x8b]),(2,[0x66,0x8b]),(1,[0x8a])])
+                sh sz | fst||sz==8 = []
+                      | otherwise = shli d d (sz*8)
+
+st (d,n,size) s = store
+  where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
+          where weight l = sum $ zipWith f l $ sums l
+                  where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
+                          where m = s-((n+i)`mod`s)
+        store = concat $ reverse $ zipWith st (reverse $ zip (sums szs) szs) (True:repeat False)
+        st (i,sz) lst = code++suf++sh sz
+          where (pre,suf) = argBytesWide (sz==8) s d (Just (n+i))
+                code = pre++fromJust (lookup sz [(8,[0x89]),(4,[0x89]),(2,[0x66,0x89]),(1,[0x88])])
+                sh sz | lst = rori s s ((8-i)*8)
+                      | otherwise = rori s s (sz*8)
+
 
 add = op [0x03]
 sub = op [0x2B]
@@ -58,6 +86,10 @@ mul = op [0x0F,0xAF]
 addi = opi $ codeFun [(1,(0x83,0)),(4,(0x81,0))]
 subi = opi $ codeFun [(1,(0x83,5)),(4,(0x81,5))]
 muli = opi $ codeFun [(1,(0x6B,0)),(8,(0x69,0))]
+shli = opi $ codeFun [(1,(0xC1,4))]
+shri = opi $ codeFun [(1,(0xC1,5))]
+rori d s n | n==0||n==64 = []
+           | otherwise = opi (codeFun [(1,(0xC1,1))]) d s n
 
 (e,s,c) <++> (e',s',c') = (e+e',s+s',liftM2 B.append c c')
 

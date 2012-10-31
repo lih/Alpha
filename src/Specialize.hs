@@ -77,20 +77,23 @@ specialize arch assoc (Code args code retVar) = foo
               where init = accumArray const S.empty bounds [] 
                     start = concat [prevs i | i <- indices init, isRet (instr i)]
                     fun i a = addActives (instr i) $ S.unions (map (a!) (nexts i))
-                      where addActives (Op _ v vs) s = (s S.\\ clobbers i v) <> S.fromList ([s' | SymVal Value s <- vs, s' <- s:maybeToList (parent i s)]
-                                                                                            ++maybeToList (parent i v))
-                            addActives (Branch (SymVal Value id) _) s = S.insert id s
+                      where addActives (Op _ v vs) s = (s S.\\ clobbers i v) 
+                                                       <> S.unions [clobbers i s' | SymVal Value s <- vs 
+                                                                                  , s' <- s:maybeToList (parent i s)]
+                                                       <> maybe S.empty (clobbers i) (parent i v)
+                            addActives (Branch (SymVal Value id) _) s = s <> clobbers i id
                             addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
             clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)                
-            clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- args])
+            clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- retVar:args])
               where next i r (Bind bv v) = insertManyR r' assocs
                       where r' = restrict r (S.fromList (bindSyms bv))
                             assocs = [ass | bv <- bindNodes bv
                                           , s <- bindSyms bv
                                           , ass <- [(bindSym bv,s),(s,bindSym bv)]]
-                                     ++[ass | ref <- maybe [] (S.toList . references i) v
-                                            , s <- maybe [fromJust v] S.toList (R.lookupRan ref r')
+                                     ++[ass | v <- maybeToList v
+                                            , ref <- S.toList $ references i v
+                                            , s <- maybe [v] S.toList (R.lookupRan ref r')
                                             , ass <- [(s,ref),(ref,s)]]
                     next _ r _ = r
             lookupRefs v r = fromMaybe (S.singleton (ID (-1))) $ R.lookupRan v r
