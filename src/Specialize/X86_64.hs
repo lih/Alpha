@@ -117,18 +117,10 @@ defaults args ret = debug (Past pregs addrs st,Future fr)
         st = map (True,) $ map bSize sta
         fr | bSize ret<=defSize = M.singleton (bindSym ret) (head allocRegs)
            | otherwise = M.empty
-compile (Op b d args@[_,_]) = do
-  [(r1,a1),(r2,a2)] <- loadArgs args
+                         
+compile (Op BCall d (f:args)) = undefined
+compile (Op b d [a,b]) | isBinOp b = undefined
+                       | otherwise = undefined
+compile (Op b d args@(a:b:t)) | isBinOp b = liftM (foldl1 (<++>)) $ mapM compile $ Op b d [a,b]:[Op b d [SymVal Value d,x] | x <- t]
+                              | otherwise = undefined
 
-  return (undefined,undefined,return undefined)
-
-allocate l = do
-
-
-loadArgs args = ask >>= \info -> lift $ runtl $ do
-  (p,f) <- get
-  let isBound s = M.member s (stackAddrs p) || M.member s (bindings info)
-      addrs = [s | SymVal Address s <- args, isBound s]
-      vals = [s | SymVal Value s <- args, isBound s]
-
-  return undefined
