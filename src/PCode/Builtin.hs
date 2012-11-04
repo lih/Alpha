@@ -8,6 +8,8 @@ data Builtin = BAdd | BMul | BSub | BDiv | BMod
              | BSet
              deriving (Show,Eq)
 
+isBinOp b = b/=BCall && b/=BSet && b/=BNot
+
 bNames = [(BAdd,"+"),(BMul,"*"),(BSub,"-"),(BDiv,"/"),(BMod,"%"),
           (BLowerThan,"<"),(BGreaterThan,">"),(BLowerEq,"<="),(BGreaterEq,">="),
           (BEqual,"=="),(BNotEqual,"<>"),

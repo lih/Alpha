@@ -1,4 +1,4 @@
-module My.Data.List(module Data.List,classesBy,nubOrd,sums) where
+module My.Data.List(module Data.List,classesBy,nubOrd,sums,zipRest) where
 
 import Data.List
 

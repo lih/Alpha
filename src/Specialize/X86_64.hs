@@ -16,6 +16,7 @@ import Specialize.Types
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Bimap as BM
+import qualified My.Data.Set as S
 
 defSize = 8
 bSize (bindSize -> (n,nr)) = n+nr*defSize
@@ -118,9 +119,12 @@ defaults args ret = debug (Past pregs addrs st,Future fr)
         fr | bSize ret<=defSize = M.singleton (bindSym ret) (head allocRegs)
            | otherwise = M.empty
                          
+withFreeSet m = evalStateT m S.empty        
 compile (Op BCall d (f:args)) = undefined
-compile (Op b d [a,b]) | isBinOp b = undefined
-                       | otherwise = undefined
-compile (Op b d args@(a:b:t)) | isBinOp b = liftM (foldl1 (<++>)) $ mapM compile $ Op b d [a,b]:[Op b d [SymVal Value d,x] | x <- t]
-                              | otherwise = undefined
-
+compile (Op b d [a,a']) | isBinOp b = undefined
+                        | otherwise = undefined
+compile (Op b d args@(a:a':t)) | isBinOp b = liftM (foldl1 (<++>)) $ mapM compile $ Op b d [a,a']:[Op b d [SymVal Value d,a''] | a'' <- t]
+                               | otherwise = undefined
+compile (Bind bv v) = undefined
+compile (Branch v alts) = undefined
+compile Noop = undefined
