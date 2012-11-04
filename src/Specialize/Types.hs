@@ -3,20 +3,21 @@ module Specialize.Types(
   module Data.Word, module My.Control.Monad.TimeLine,
   module PCode, module ID,
   Register(..),
-  Architecture(..), 
+  Architecture(..),
   Info(..), Past(..),Future(..),
   stackF,bindingsF, emptyFuture) where
 
-import Data.Relation
-import Data.ByteString
-import Data.Word
-import My.Control.Monad.TimeLine
-import My.Control.Monad.State
 import Control.Monad.Trans.Reader
-import PCode
-import ID
+import Data.Bimap
+import Data.ByteString
 import Data.Map
+import Data.Relation
 import Data.Set
+import Data.Word
+import ID
+import My.Control.Monad.State
+import My.Control.Monad.TimeLine
+import PCode
 
 type Register = Int
 data Architecture = Arch {
@@ -25,17 +26,20 @@ data Architecture = Arch {
   archInitials     :: [BindVar] -> BindVar -> (Past,Future),
   archCompileInstr :: Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
   }
-data Past = Past { 
-  registers  :: Map ID Register,
+data Past = Past {
+  registers  :: Bimap ID Register,
   stackAddrs :: Map ID Int,
   stack      :: [(Bool,Int)]
   }
+          deriving Show
 data Future = Future {
   fregisters :: Map ID Register
   }
+            deriving Show
 data Info = Info {
-  idValue    :: ID -> IO Int,
+  envInfo    :: (ID,ID -> IO Int),
   bindings   :: Map ID (ID,Int),
+  sizes      :: Map ID Int,
   actives    :: Set ID,
   clobbers   :: Relation ID ID,
   branchPos  :: Int -> (Int,Int,Maybe Past)

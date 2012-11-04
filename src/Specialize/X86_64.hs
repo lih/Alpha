@@ -1,18 +1,24 @@
-{-# LANGUAGE RankNTypes, ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, TupleSections #-}
 module Specialize.X86_64(arch_x86_64) where
 
-import Specialize.Types
 import Control.Monad
-import qualified Data.ByteString as B
+import Control.Monad.Reader
+import Control.Monad.Trans
 import Data.Bits
-import My.Data.List
 import Data.Char
 import Data.Maybe
 import Data.Ord
-
+import My.Control.Monad.State
+import My.Data.Either
+import My.Data.List
 import My.Prelude
+import Specialize.Types
+import qualified Data.ByteString as B
+import qualified Data.Map as M
+import qualified Data.Bimap as BM
 
 defSize = 8
+bSize (bindSize -> (n,nr)) = n+nr*defSize
 arch_x86_64 = Arch "x86_64" defSize defaults compile
 
 fromFields fs = foldl1 xor (zipWith shiftL (map (fromIntegral . fst) fs) (scanl (+) 0 $ map snd fs))
@@ -20,7 +26,7 @@ fromFields fs = foldl1 xor (zipWith shiftL (map (fromIntegral . fst) fs) (scanl 
 showHex n = reverse $ map (intToDigit . fromIntegral . (`mod`16)) $ take 2 $ iterate (`div`16) (n :: Word8)
 showCode = intercalate " " . map showHex
 
-argBytes :: Int -> Int -> (Maybe Integer) -> ([Word8],[Word8])
+argBytes :: Int -> Int -> Maybe Integer -> ([Word8],[Word8])
 argBytes = argBytesWide True
 argBytesWide w r rm arg = (pre,suf)
   where pre = if rex/=0x40 then [rex] else []
@@ -33,7 +39,9 @@ argBytesWide w r rm arg = (pre,suf)
         sib | mode/=3 && (rm.&.7 == 4) = [fromFields [(4,3),(4,3),(0,2)]]
             | otherwise = []
 
-[rax,rbx,rsp,rbp,r8,r12] = [0,3,4,5,8,12] :: [Int]
+([rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8,r9,r10,r11,r12,r13,r14,r15],allocRegs) =
+  (regs,filter (not . (`elem`[rsp,r15])) regs)
+  where regs = [0..15] :: [Int]
 
 op code d a b | d==b = op d a
               | otherwise = mov d a++op d b
@@ -60,8 +68,10 @@ ld d (s,n,size) = load
           where weight l = sum $ zipWith f l $ sums l
                   where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
                           where m = s-((n+i)`mod`s)
-        load = concat $ zipWith ld (reverse $ zip (sums szs) szs) (True:repeat False)
-        ld (i,sz) fst = sh sz++code++suf
+        load = concat $ zipWith ldChunk (reverse $ zip (sums szs) szs) (True:repeat False)
+        ldChunk (i,sz) fst = sh sz
+                             ++ if sz==1 && d>=4 && d<8 then (if fst then [] else mov r15 d)++ld r15 (s,n+i,1)++mov d r15
+                                else code++suf
           where (pre,suf) = argBytesWide (sz==8) d s (Just (n+i))
                 code = pre++fromJust (lookup sz [(8,[0x8b]),(4,[0x8b]),(2,[0x66,0x8b]),(1,[0x8a])])
                 sh sz | fst||sz==8 = []
@@ -72,19 +82,24 @@ st (d,n,size) s = store
           where weight l = sum $ zipWith f l $ sums l
                   where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
                           where m = s-((n+i)`mod`s)
-        store = concat $ reverse $ zipWith st (reverse $ zip (sums szs) szs) (True:repeat False)
-        st (i,sz) lst = code++suf++sh sz
+        store = concat $ reverse $ zipWith stChunk (reverse $ zip (sums szs) szs) (True:repeat False)
+        stChunk (i,sz) lst = (if sz==1 && d>=4 && d<8 then mov r15 s++st (d,n+i,1) r15
+                              else code++suf) ++ sh sz
           where (pre,suf) = argBytesWide (sz==8) s d (Just (n+i))
                 code = pre++fromJust (lookup sz [(8,[0x89]),(4,[0x89]),(2,[0x66,0x89]),(1,[0x88])])
                 sh sz | lst = rori s s ((8-i)*8)
                       | otherwise = rori s s (sz*8)
 
-
 add = op [0x03]
 sub = op [0x2B]
 mul = op [0x0F,0xAF]
+bwand = op [0x23]
+bwor = op [0x0b]
+
 addi = opi $ codeFun [(1,(0x83,0)),(4,(0x81,0))]
 subi = opi $ codeFun [(1,(0x83,5)),(4,(0x81,5))]
+bwandi = opi $ codeFun [(1,(0x83,4)),(4,(0x81,4))]
+bwori = opi $ codeFun [(1,(0x83,1)),(4,(0x81,1))]
 muli = opi $ codeFun [(1,(0x6B,0)),(8,(0x69,0))]
 shli = opi $ codeFun [(1,(0xC1,4))]
 shri = opi $ codeFun [(1,(0xC1,5))]
@@ -93,5 +108,27 @@ rori d s n | n==0||n==64 = []
 
 (e,s,c) <++> (e',s',c') = (e+e',s+s',liftM2 B.append c c')
 
-defaults args ret = undefined
-compile = undefined
+defaults args ret = debug (Past pregs addrs st,Future fr)
+  where (regArgs,stArgs) = partition ((<=defSize) . bSize) args
+        (regs,nonRegs) = zipRest (tail allocRegs) regArgs
+        pregs = BM.fromList [(bindSym v,r) | (r,v) <- regs]
+        sta = stArgs++nonRegs
+        addrs = M.fromList $ zip (map bindSym sta) (sums $ map bSize sta)
+        st = map (True,) $ map bSize sta
+        fr | bSize ret<=defSize = M.singleton (bindSym ret) (head allocRegs)
+           | otherwise = M.empty
+compile (Op b d args@[_,_]) = do
+  [(r1,a1),(r2,a2)] <- loadArgs args
+
+  return (undefined,undefined,return undefined)
+
+allocate l = do
+
+
+loadArgs args = ask >>= \info -> lift $ runtl $ do
+  (p,f) <- get
+  let isBound s = M.member s (stackAddrs p) || M.member s (bindings info)
+      addrs = [s | SymVal Address s <- args, isBound s]
+      vals = [s | SymVal Value s <- args, isBound s]
+
+  return undefined

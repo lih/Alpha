@@ -10,10 +10,10 @@ import ID
 import PCode
 import Syntax
 
-data Axiom = XAlter | XBind 
+data Axiom = XAlter | XBind
            | XReturn | XRestart | XChoose | XDo
            | XLang | XVerb | XNoun
-           | XID | XAddr | XSize  
+           | XID | XAddr | XSize
            deriving Show
 
 data Value = Axiom Axiom
@@ -47,5 +47,3 @@ jitAddressesF  = Field (jitAddresses,\a c -> c { jitAddresses = a })
 compAddressesF = Field (compAddresses,\a c -> c { compAddresses = a })
 languageF      = Field (language,\a c -> c { language = a })
 compTopF       = Field (compTop,\a c -> c { compTop = a })
-
-
