@@ -22,4 +22,3 @@ writeElf name dat = do
   unsafeUseAsCStringLen dat (\(d,nd) -> c_writeElf (fromIntegral fd) d (fromIntegral nd))
                                             
 
-

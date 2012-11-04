@@ -99,4 +99,3 @@ instance Show BindVar where
           padStr = if pad==0 then [] else [show pad]
           subsStr = map show subs
 
-

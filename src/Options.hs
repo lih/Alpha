@@ -56,4 +56,3 @@ getSettings args = case getOpt Permute options args of
         handleOpt s (LanguageDir d)  = s { languageDir = d }
         handleOpt s (Architecture a) = s { outputArch = a }
 
-

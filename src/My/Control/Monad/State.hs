@@ -26,4 +26,3 @@ Field (f,f') <.> Field (g,g') = Field (g . f, (\g s -> f' (g' g (f s)) s))
 
 withState s mx = get >>= \v -> put s >> mx >>= \x -> put v >> return x
 
-

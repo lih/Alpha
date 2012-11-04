@@ -24,4 +24,3 @@ instance Show a => Show (Syntax a) where
   show (Symbol s) = show s
   show (Group l) = "[" ++ intercalate " " (map show l) ++ "]"
 
-

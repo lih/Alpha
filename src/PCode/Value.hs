@@ -34,5 +34,3 @@ instance Show Value where
   show (IntVal n)   = show n
   show NullVal      = "(null)"
 
-
-

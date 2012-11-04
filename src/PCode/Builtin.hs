@@ -13,4 +13,3 @@ bNames = [(BAdd,"+"),(BMul,"*"),(BSub,"-"),(BDiv,"/"),(BMod,"%"),
           (BEqual,"=="),(BNotEqual,"<>"),
           (BAnd,"&"),(BOr,"|"),(BXor,"x|"),(BNot,"not")]
 
-

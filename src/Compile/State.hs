@@ -111,6 +111,3 @@ makeBranch' typ val alts = do
 instance Show NodeData where
   show (Instr i) = show i
   show (BrPart v) = "case "++show v
-
-
-

@@ -32,4 +32,3 @@ instance Translatable Code where
 instance Translatable BindVar where
   translate tr (BindVar id s pad subs) = BindVar (translate tr id) s pad [(translate tr bv,s) | (bv,s) <- subs]
 
-

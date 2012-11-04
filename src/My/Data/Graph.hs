@@ -71,4 +71,3 @@ instance (Show n,Show e) => Show (Graph e n) where
               where showNEdge (n',e) = "--"++show e++"--> "++show n'
                     showREdge (n',e) = "<--"++show e++"-- "++show n'
 
-

@@ -19,5 +19,3 @@ swap (a,b) = (b,a)
 newerThan f1 f2 = liftM2 (>) (modTime f1) (modTime f2)
   where modTime f = modificationTime $< getFileStatus f
 
-
-

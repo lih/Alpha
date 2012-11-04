@@ -1,5 +1,4 @@
 {-# LANGUAGE TupleSections, ViewPatterns, NoMonomorphismRestriction #-}
-
 module Compile.Utils where
 
 import Compile.State as CS
@@ -120,7 +119,4 @@ annotate depG = newdepG
                           , let t = tag $ G.getContext n' newdepG]
             
     maximum = foldl max 0
-
-
-
 

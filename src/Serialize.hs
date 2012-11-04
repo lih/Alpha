@@ -39,4 +39,3 @@ instance (Ord a,Ord b,Serialize a,Serialize b) => Serialize (Bimap a b) where
   
 instance Serialize Language
 
-

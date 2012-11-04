@@ -28,4 +28,3 @@ instance Num ID where
   signum = undefined
   fromInteger n = ID $ fromInteger n
 
-

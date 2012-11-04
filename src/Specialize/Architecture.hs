@@ -17,4 +17,3 @@ arch_arm = nullArch { archName = "arm", archDefaultSize = 4 }
 
 hostArch = arch_x86_64 { archName = "host" }
 
-
