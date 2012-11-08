@@ -22,6 +22,7 @@ source-repository head
 executable alpha
   build-depends:  base<=4.6.0.0, unix, containers, array, mtl, bytestring, bimap, ghc-prim, directory, filepath, cereal, parsec, transformers, bindings-posix, relation, AvlTree, COrdering
   main-is:        Alpha.hs
-  other-modules:  Alpha, Compile, Compile.State, Compile.Utils, Context, Context.Language, Context.Types, Elf, ID, My.Control.Monad, My.Control.Monad.State, My.Control.Monad.TimeLine, My.Data.Either, My.Data.Graph, My.Data.List, My.Data.Tree, My.Prelude, Options, PCode, PCode.Builtin, PCode.Instruction, PCode.Value, Serialize, Specialize, Specialize.Architecture, Specialize.Types, Specialize.X86_64, Syntax, Syntax.Parse, Translate
+  other-modules:  Alpha Compile Compile.State Compile.Utils Context Context.Language Context.Types Elf ID My.Control.Monad My.Control.Monad.State My.Control.Monad.TimeLine My.Data.Either My.Data.Graph My.Data.List My.Data.SetBy My.Data.Tree My.Prelude Options PCode PCode.Builtin PCode.Instruction PCode.Value Serialize Specialize Specialize.Architecture Specialize.Frame Specialize.Types Specialize.X86_64 Syntax Syntax.Parse Translate
   hs-source-dirs: src
   c-sources:      src/writeElf.c
+
