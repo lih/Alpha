@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, TupleSections #-}
+{-# LANGUAGE ViewPatterns, TupleSections, ParallelListComp #-}
 module Specialize.X86_64(arch_x86_64) where
 
 import Control.Arrow
@@ -61,13 +61,16 @@ codeFun codes n = head [(code,r,take s chop) | (s,(code,r)) <- codes, s>=size]
         divs = map fromIntegral $ iterate (`shiftR`8) n
 
 mov d s | d==s = []
-        | otherwise = pre++[0x8B]++suf
+        | otherwise = pre++[0x8b]++suf
   where (pre,suf) = argBytes d s Nothing
 movi d 0 = op [0x33] d d d
 movi d n = pre++[code]++suf++imm
   where (code,r,imm) = codeFun [(4,(0xC7,0)),(8,(0xB8`xor`(fromIntegral d.&.7),0))] n
         (pre,suf) | code==0xC7 = argBytes 0 d Nothing
                   | otherwise = (fst $ argBytes d 0 Nothing,[])
+lea d s n = pre++[0x8d]++post
+  where (pre,post) = argBytes d s (Just n)
+
 ld d (s,n,size) = load
   where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
           where weight l = sum $ zipWith f l $ sums l
@@ -81,7 +84,6 @@ ld d (s,n,size) = load
                 code = pre++fromJust (lookup sz [(8,[0x8b]),(4,[0x8b]),(2,[0x66,0x8b]),(1,[0x8a])])
                 sh sz | fst||sz==8 = []
                       | otherwise = shli d d (sz*8)
-
 st (d,n,size) s = store
   where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
           where weight l = sum $ zipWith f l $ sums l
@@ -111,15 +113,8 @@ shri = opi $ codeFun [(1,(0xC1,5))]
 rori d s n | n==0||n==64 = []
            | otherwise = opi (codeFun [(1,(0xC1,1))]) d s n
 
+fromBytes l = (length l,length l,return $ B.pack l)
 (e,s,c) <++> (e',s',c') = (e+e',s+s',liftM2 B.append c c')
-
-defaults args ret = debug (Past pregs frame,Future fr)
-  where (regArgs,stArgs) = partition ((<=defSize) . bSize) args
-        (regs,nonRegs) = zipRest (tail allocRegs) regArgs
-        pregs = BM.fromList [(bindSym v,r) | (r,v) <- regs]
-        frame = foldr (frameAlloc defSize) emptyFrame (stArgs++nonRegs)
-        fr | bSize ret<=defSize = BM.singleton (bindSym ret) (head allocRegs)
-           | otherwise = BM.empty
 
 infos = ask >>= \i -> lift (runtl get) >>= \(p,f) -> return (i,p,f)
 
@@ -137,32 +132,49 @@ withFreeSet m = infos >>= \(i,p,f) -> do
       isActive v = S.member v $ actives i
   evalStateT m (SB.fromList cmp allocRegs)
 
-allocReg sym = state st
+pastState = lift . runtl . doF fstF
+
+allocReg sym = do
+  r <- state st
+  lift $ pastState (modifyF registersF $ BM.insert sym r)
+  return r
   where st free = (reg,SB.delete reg free)
           where reg | SB.null free = r15
                     | otherwise = SB.findMin free
     
 type Alloc = ReaderT Info (TimeLine Past Future) 
 
-sizeof s i = fromMaybe defSize $ M.lookup s (sizes i)
+varSize i s = fromMaybe defSize $ M.lookup s (sizes i)
 getFrameAddr s = lift $ runtl $ stateF (fstF <.> frameF) (withAddr defSize s)
         
 storeRegs :: [Register] -> StateT (SB.SetBy Register) Alloc [Word8]
 storeRegs regs = lift infos >>= \(i,p,f) -> do
   let vars = [(r,s,M.lookup s $ bindings i) | r <- regs, s <- maybeToList $ BM.lookupR r (registers p)]
-      groups = [(fmap fst $ thd $ head g,g) | g <- classesBy ((==)`on`thd) vars]
-      storeGroup (Nothing,g) = concat $< sequence [store r s | (r,s,_) <- g]
-        where store r s = lift $ do
-                a <- getFrameAddr s
-                return $ st (rsp,fromIntegral a,fromIntegral $ sizeof s i) r
-      storeGroup (Just s,g) = do
-        ~(root,code) <- case BM.lookup s (registers p) of
-          Just r -> return (r,[])
-          Nothing -> allocReg s >>= \r -> lift (getFrameAddr s) >>= \a -> return (r,ld r (rsp,fromIntegral a,fromIntegral defSize))
-        return $ code++concat [st (root,fromIntegral n,fromIntegral $ sizeof s i) r | (r,s,Just (_,n)) <- g]
-  concat $< mapM storeGroup groups
+      groups = classesBy ((==)`on`parent) vars
+      parent (_,_,b) = fmap fst b
+      storeGroup g = do
+        ~(reg,code) <- loadRoot $ parent $ head g
+        sts <- concat $< mapM (store reg) g
+        return $ code++sts
+        where store base (r,s,b) = lift $ do
+                n <- maybe (getFrameAddr s) return $ fmap snd b
+                return $ st (base,fromIntegral n,fromIntegral $ varSize i s) r
+      restrict m = do
+        free <- get
+        let ~(free',occ) = SB.partition isFree free
+            isFree r = isNothing $ BM.lookupR r (registers p)
+        put free'
+        res <- m
+        modify (SB.union occ)
+        return res
+  restrict $ concat $< mapM storeGroup groups
 
 k = Kleisli
+
+loadRoot (Just s) = lift infos >>= \(_,p,_) -> case BM.lookup s (registers p) of
+  Just r -> return (r,[])
+  Nothing -> allocReg s >>= \r -> lift (getFrameAddr s) >>= \a -> return (r,ld r (rsp,fromIntegral a,fromIntegral defSize))
+loadRoot Nothing = return (rsp,[])
 
 loadArgs args = lift infos >>= \(info,p,_) -> do
   let fixed = mapMaybe snd args
@@ -177,14 +189,47 @@ loadArgs args = lift infos >>= \(info,p,_) -> do
       argVal (IntVal n) = Right (return n)
       argVal (SymVal Size s) = Right (return $ fromIntegral $ fromMaybe defSize $ M.lookup s (sizes info))
       argVal (SymVal SymID (ID s)) = Right (return $ fromIntegral s)
-      argVal (SymVal _ s) = if isLocal s then Left s else Right (liftM fromIntegral $ snd (envInfo info) s)
+      argVal (SymVal _ s) = maybe (Left s) Right $ globVal s
+      globVal s = if isLocal s then Nothing else Just (liftM fromIntegral $ snd (envInfo info) s)
       isLocal s = BM.member s (registers p) || isJust (lookupAddr s (frame p)) || M.member s (bindings info)
   mapM_ (modify . SB.delete) fixed
-  allocs <- mapM argAlloc $< mapM argReserve args
-  
-  return allocs
+  allocs <- mapM argAlloc =<< mapM argReserve args
+  let assocs = lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
+      bind (SymVal _ s) | isLocal s = M.lookup s (bindings info)
+                        | otherwise = Nothing
+      groups = classesBy ((==)`on`parent) assocs
+      parent (_,_,b) = fmap fst b
+      loadGroup g = do
+        ~(base,code) <- loadRoot $ parent $ head g
+        lds <- foldr1 (<++>) $< mapM (load base) g
+        return $ fromBytes code <++> lds
+        where load base (r,SymVal t s,b) = case globVal s of
+                Just v -> return (7,7,liftM (B.pack . movi r) (v :: IO Integer))
+                Nothing -> liftM fromBytes $ lift $ do
+                  n <- maybe (getFrameAddr s) return $ fmap snd b
+                  return $ if t==Value then ld r (base,fromIntegral n,fromIntegral $ varSize info s) else lea r base (fromIntegral n)
+              
+  sts <- storeRegs $ lefts allocs
+  lds <- foldr1 (<++>) $< mapM loadGroup groups
+  lift $ pastState (modifyF registersF $ \m -> foldr (uncurry BM.insert) m [(s,r) | ((SymVal _ s,_),Left r) <- zip args allocs])
+  return (fromBytes sts <++> lds,allocs)
 
-compile (Op BCall d (f:args)) = undefined
+defaults args ret = debug (Past pregs frame,Future fr)
+  where (regArgs,stArgs) = partition ((<=defSize) . bSize) args
+        (regs,nonRegs) = zipRest (tail allocRegs) regArgs
+        pregs = BM.fromList [(bindSym v,r) | (r,v) <- regs]
+        frame = foldr (frameAlloc defSize) emptyFrame (stArgs++nonRegs)
+        fr | bSize ret<=defSize = BM.singleton (bindSym ret) (head allocRegs)
+           | otherwise = BM.empty
+
+compile (Op BCall d args) = infos >>= \(i,p,f) -> withFreeSet $ do
+  let (regArgs,stArgs) = partition ((<=defSize) . argSize) args
+      (regs,nonRegs) = zipRest (tail allocRegs) regArgs
+      argSize (SymVal Value s) = varSize i s
+      argSize _ = defSize
+  
+  (code,f:args) <- loadArgs [(v,Just r) | (r,v) <- regs]
+  return undefined
 compile (Op b d [a,a']) | isBinOp b = undefined
                         | otherwise = undefined
 compile (Op b d args@(a:a':t)) | isBinOp b = liftM (foldl1 (<++>)) $ mapM compile $ Op b d [a,a']:[Op b d [SymVal Value d,a''] | a'' <- t]

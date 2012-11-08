@@ -5,7 +5,7 @@ module Specialize.Types(
   Register(..),
   Architecture(..),
   Info(..), Past(..),Future(..),
-  frameF, bindingsF, emptyFuture) where
+  frameF, bindingsF, registersF, emptyFuture) where
 
 import Control.Monad.Trans.Reader
 import Data.Bimap
@@ -46,6 +46,7 @@ data Info = Info {
   }
 
 frameF = Field (frame,\f p -> p { frame = f })
+registersF = Field (registers,\r p -> p { registers = r })
 bindingsF = Field (bindings,\a p -> p { bindings = a })
 
 emptyFuture = Future Data.Bimap.empty
