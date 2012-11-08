@@ -1,7 +1,7 @@
 module My.Data.SetBy (SetBy
                      ,empty,fromList,fromAscList
                      ,null
-                     ,toAscList
+                     ,toList,toAscList
                      ,insert,delete,member
                      ,findMin
                      ,partition
@@ -30,6 +30,7 @@ fromAscList' cmp l = SetBy cmp (AVL.asTreeL l)
 
 null = AVL.isEmpty . tree
 
+toList = toAscList
 toAscList (SetBy _ t) = AVL.asListL t
 
 insert e (SetBy cmp t) = SetBy cmp (AVL.push (cmp e) e t)

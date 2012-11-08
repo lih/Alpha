@@ -1,7 +1,8 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module My.Control.Monad (module Control.Monad,($<),(>$),(>$<),(§),(§<),(>§),(>§<),(<&&>),(<||>),ifM,findM) where
+module My.Control.Monad (module Control.Monad,($<),(>$),(>$<),(§),(§<),(>§),(>§<),(<&&>),(<||>),ifM,findM,lift2) where
 
 import Control.Monad
+import Control.Monad.Trans
 
 ($<)  :: Monad m => (a -> b) -> m a -> m b
 (>$)  :: Monad m => m (a -> b) -> a -> m b
@@ -9,6 +10,8 @@ import Control.Monad
 ($<) = liftM
 mf >$ x = mf >>= \f -> return (f x)
 (>$<) = ap
+
+lift2 = lift . lift
 
 infixr 0 $<,>$,>$<
 

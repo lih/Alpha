@@ -42,7 +42,8 @@ data Info = Info {
   sizes      :: Map ID Int,
   actives    :: Set ID,
   clobbers   :: Relation ID ID,
-  branchPos  :: Int -> (Int,Int,Maybe Past)
+  locals     :: Set ID,
+  branchPos  :: (Int,Int -> (Int,Int,Maybe Past))
   }
 
 frameF = Field (frame,\f p -> p { frame = f })

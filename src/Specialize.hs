@@ -38,7 +38,7 @@ specialize arch env (Code args code retVar) = foo
     defSize = archDefaultSize arch
     positions = listArray bounds [(e,s) | e <- sums estimates, s <- sums sizes]
     codeTree = spanningTree 0 nexts
-    runInstr i (p,f) past = runTimeLine (runReaderT (compile $ instr i) ((infos!i) getPos)) (p,f)
+    runInstr i (p,f) past = runTimeLine (runReaderT (compile $ instr i) ((infos!i) (i,getPos))) (p,f)
       where compile = archCompileInstr arch
             getPos j = (e'-e,d'-d,past j)
               where (e,d) = positions!i ; (e',d') = positions!j
@@ -60,7 +60,7 @@ specialize arch env (Code args code retVar) = foo
                 f br = (n,fut):[(i,snd3 $ runInstr j (undefined,init!j) (const Nothing)) | (i,j) <- zip br (tail br)]
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
 
-    infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA
+    infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA `applyA` localsA
       where root i v = fmap fst $ M.lookup v (bindingsA!i)
             bindingsA = treeArray next M.empty
               where next _ bnd (Bind bv (Just id)) = insertMany bnd [(s,(id,n)) | (s,n,_) <- flattenBind defSize bv]
@@ -80,6 +80,10 @@ specialize arch env (Code args code retVar) = foo
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id
                             addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
+            localsA = treeArray next (S.fromList [v | bv <- retVar:args, v <- bindSyms bv])
+              where next _ s (Bind bv _) = s `S.union` S.fromList (bindSyms bv)
+                    next _ s (Op _ v _) = S.insert v s
+                    next _ s _ = s
             clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)
             clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- retVar:args])
               where next i r (Bind bv v) = insertManyR r' assocs
