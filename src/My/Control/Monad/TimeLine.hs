@@ -31,4 +31,5 @@ runTimeLine tl x = runIdentity $ runTimeLineT tl x
 statetl = TimeLineT . \k st -> k st >§ \(a,(p,f)) -> (p,f,a)
 runtl = statetl . runStateT
 getPast = runtl $ gets fst
+getFuture = runtl $ gets snd
 

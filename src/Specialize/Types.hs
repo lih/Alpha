@@ -1,11 +1,11 @@
 {-# LANGUAGE RankNTypes #-}
 module Specialize.Types(
   module Data.Word, module My.Control.Monad.TimeLine,
-  module PCode, module ID,
+  module PCode, module ID,module Specialize.Frame,
   Register(..),
   Architecture(..),
   Info(..), Past(..),Future(..),
-  stackF,bindingsF, emptyFuture) where
+  frameF, bindingsF, emptyFuture) where
 
 import Control.Monad.Trans.Reader
 import Data.Bimap
@@ -18,6 +18,7 @@ import ID
 import My.Control.Monad.State
 import My.Control.Monad.TimeLine
 import PCode
+import Specialize.Frame
 
 type Register = Int
 data Architecture = Arch {
@@ -28,12 +29,11 @@ data Architecture = Arch {
   }
 data Past = Past {
   registers  :: Bimap ID Register,
-  stackAddrs :: Map ID Int,
-  stack      :: [(Bool,Int)]
+  frame :: Frame
   }
           deriving Show
 data Future = Future {
-  fregisters :: Map ID Register
+  fregisters :: Bimap ID Register
   }
             deriving Show
 data Info = Info {
@@ -45,7 +45,7 @@ data Info = Info {
   branchPos  :: Int -> (Int,Int,Maybe Past)
   }
 
-stackF = Field (stack,\s p -> p { stack = s })
+frameF = Field (frame,\f p -> p { frame = f })
 bindingsF = Field (bindings,\a p -> p { bindings = a })
 
-emptyFuture = Future Data.Map.empty
+emptyFuture = Future Data.Bimap.empty

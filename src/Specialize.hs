@@ -1,39 +1,32 @@
 {-# LANGUAGE RankNTypes, ParallelListComp, TupleSections #-}
 module Specialize(specialize) where
 
-import Data.Monoid
-import Control.Arrow
 import Context.Types
+import Control.Arrow
 import Control.Monad.Trans.Reader
 import Data.Array
-import Data.List
 import Data.Maybe
-import Data.Word
+import Data.Monoid
 import Data.Ord
-import qualified Data.ByteString as B
-import qualified Data.Map as M
-import qualified Data.Relation as R
-import qualified Data.Set as S
+import Data.Word
 import ID
 import My.Control.Monad
 import My.Control.Monad.State
 import My.Control.Monad.TimeLine
 import My.Data.Either
+import My.Data.List
 import My.Data.Tree
 import PCode
 import Specialize.Architecture
 import Specialize.Architecture
 import Specialize.Types
+import qualified Data.ByteString as B
+import qualified Data.Map as M
+import qualified Data.Relation as R
+import qualified Data.Set as S
 
 import System.IO.Unsafe
 import My.Prelude
-
-retCode = ret
-  where ret = [0xc3]
-        exit = [0x31,0xdb
-               ,0x31,0xc0, 0xff,0xc0
-               ,0xcd,0x80]
-sums = scanl (+) 0
 
 specialize arch env (Code args code retVar) = foo
   where
@@ -68,7 +61,7 @@ specialize arch env (Code args code retVar) = foo
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
 
     infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA
-      where parent i v = fmap fst $ M.lookup v (bindingsA!i)
+      where root i v = fmap fst $ M.lookup v (bindingsA!i)
             bindingsA = treeArray next M.empty
               where next _ bnd (Bind bv (Just id)) = insertMany bnd [(s,(id,n)) | (s,n,_) <- flattenBind defSize bv]
                     next _ bnd _ = bnd
@@ -82,8 +75,8 @@ specialize arch env (Code args code retVar) = foo
                       where out = S.unions (map ((a!) >>> fst) (nexts i))
                             addActives (Op _ v vs) s = (s S.\\ clobbers i v)
                                                        <> S.unions [clobbers i s' | SymVal Value s <- vs
-                                                                                  , s' <- s:maybeToList (parent i s)]
-                                                       <> S.fromList (catMaybes [parent i s | SymVal Address s <- SymVal Address v:vs])
+                                                                                  , s' <- s:maybeToList (root i s)]
+                                                       <> S.fromList (catMaybes [root i s | SymVal Address s <- SymVal Address v:vs])
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id
                             addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s

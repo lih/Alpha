@@ -1,13 +1,16 @@
 {-# LANGUAGE ViewPatterns, TupleSections #-}
 module Specialize.X86_64(arch_x86_64) where
 
-import Control.Monad
+import Control.Arrow
 import Control.Monad.Reader
 import Control.Monad.Trans
 import Data.Bits
 import Data.Char
+import Data.Function
 import Data.Maybe
+import Data.Monoid
 import Data.Ord
+import My.Control.Monad
 import My.Control.Monad.State
 import My.Data.Either
 import My.Data.List
@@ -16,7 +19,8 @@ import Specialize.Types
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Bimap as BM
-import qualified My.Data.Set as S
+import qualified Data.Set as S
+import qualified My.Data.SetBy as SB
 
 defSize = 8
 bSize (bindSize -> (n,nr)) = n+nr*defSize
@@ -109,17 +113,77 @@ rori d s n | n==0||n==64 = []
 
 (e,s,c) <++> (e',s',c') = (e+e',s+s',liftM2 B.append c c')
 
-defaults args ret = debug (Past pregs addrs st,Future fr)
+defaults args ret = debug (Past pregs frame,Future fr)
   where (regArgs,stArgs) = partition ((<=defSize) . bSize) args
         (regs,nonRegs) = zipRest (tail allocRegs) regArgs
         pregs = BM.fromList [(bindSym v,r) | (r,v) <- regs]
-        sta = stArgs++nonRegs
-        addrs = M.fromList $ zip (map bindSym sta) (sums $ map bSize sta)
-        st = map (True,) $ map bSize sta
-        fr | bSize ret<=defSize = M.singleton (bindSym ret) (head allocRegs)
-           | otherwise = M.empty
-                         
-withFreeSet m = evalStateT m S.empty        
+        frame = foldr (frameAlloc defSize) emptyFrame (stArgs++nonRegs)
+        fr | bSize ret<=defSize = BM.singleton (bindSym ret) (head allocRegs)
+           | otherwise = BM.empty
+
+infos = ask >>= \i -> lift (runtl get) >>= \(p,f) -> return (i,p,f)
+
+withFreeSet m = infos >>= \(i,p,f) -> do
+  let cmp r r' = case (regVar r,regVar r') of
+        (Just _,Nothing) -> GT
+        (Nothing,Just _) -> LT
+        (Nothing,Nothing) -> case (fRegVar r,fRegVar r') of
+          (Just _,Nothing) -> GT
+          (Nothing,Just _) -> LT
+          _ -> compare r r'
+        (Just v,Just v') -> (isActive v`compare`isActive v')`mappend`compare r r'
+      regVar r = BM.lookupR r $ registers p
+      fRegVar r = BM.lookupR r $ fregisters f
+      isActive v = S.member v $ actives i
+  evalStateT m (SB.fromList cmp allocRegs)
+
+allocReg sym = state st
+  where st free = (reg,SB.delete reg free)
+          where reg | SB.null free = r15
+                    | otherwise = SB.findMin free
+    
+type Alloc = ReaderT Info (TimeLine Past Future) 
+
+sizeof s i = fromMaybe defSize $ M.lookup s (sizes i)
+getFrameAddr s = lift $ runtl $ stateF (fstF <.> frameF) (withAddr defSize s)
+        
+storeRegs :: [Register] -> StateT (SB.SetBy Register) Alloc [Word8]
+storeRegs regs = lift infos >>= \(i,p,f) -> do
+  let vars = [(r,s,M.lookup s $ bindings i) | r <- regs, s <- maybeToList $ BM.lookupR r (registers p)]
+      groups = [(fmap fst $ thd $ head g,g) | g <- classesBy ((==)`on`thd) vars]
+      storeGroup (Nothing,g) = concat $< sequence [store r s | (r,s,_) <- g]
+        where store r s = lift $ do
+                a <- getFrameAddr s
+                return $ st (rsp,fromIntegral a,fromIntegral $ sizeof s i) r
+      storeGroup (Just s,g) = do
+        ~(root,code) <- case BM.lookup s (registers p) of
+          Just r -> return (r,[])
+          Nothing -> allocReg s >>= \r -> lift (getFrameAddr s) >>= \a -> return (r,ld r (rsp,fromIntegral a,fromIntegral defSize))
+        return $ code++concat [st (root,fromIntegral n,fromIntegral $ sizeof s i) r | (r,s,Just (_,n)) <- g]
+  concat $< mapM storeGroup groups
+
+k = Kleisli
+
+loadArgs args = lift infos >>= \(info,p,_) -> do
+  let fixed = mapMaybe snd args
+      argReserve (arg,Nothing) = runKleisli (left $ k f) (argVal arg)
+        where f s = state st
+                where st free = fromMaybe (Left s,free)
+                                $ do r <- BM.lookup s (registers p)
+                                     guard (SB.member r free)
+                                     return (Right r,SB.delete r free)
+      argReserve (_,Just r) = return (Left $ Right r)
+      argAlloc = runKleisli (left $ k allocReg ||| k return)
+      argVal (IntVal n) = Right (return n)
+      argVal (SymVal Size s) = Right (return $ fromIntegral $ fromMaybe defSize $ M.lookup s (sizes info))
+      argVal (SymVal SymID (ID s)) = Right (return $ fromIntegral s)
+      argVal (SymVal _ s) = if isLocal s then Left s else Right (liftM fromIntegral $ snd (envInfo info) s)
+      isLocal s = BM.member s (registers p) || isJust (lookupAddr s (frame p)) || M.member s (bindings info)
+  mapM_ (modify . SB.delete) fixed
+  allocs <- mapM argAlloc $< mapM argReserve args
+  
+  return allocs
+
 compile (Op BCall d (f:args)) = undefined
 compile (Op b d [a,a']) | isBinOp b = undefined
                         | otherwise = undefined
