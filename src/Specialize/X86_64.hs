@@ -141,7 +141,6 @@ tellCode c = tell $ fromBytes c
 infos = liftM3 (,,) ask get (future get)
 argSize (SymVal Value s) = varSize s
 argSize _ = return defSize
-verify p m = m >>= \v -> guard (p v) >> return v
 k = Kleisli
 withSize n = (numSize n,return $ fi n)
 
@@ -155,14 +154,13 @@ miscInfos = ask >>= \info -> do
       binding s = M.lookup s (bindings info)
   return (argVal,globVal,isLocal,binding)
 
-lookupRegSym = BM.lookupR
-lookupSymReg = BM.lookup
+lookupSymIn = flip BM.lookupR
+lookupRegIn = flip BM.lookup
 
-getDestReg d = infos >§ \(i,p,f) -> case lookupSymReg d (fregisters f) of
+destRegister d = infos >§ \(i,p,f) -> case lookupRegIn (fregisters f) d of
   Just r -> r
-  Nothing -> fst $ minimumBy (comparing snd) [(r,isJust $ verify (`S.member`actives i)
-                                                 $ lookupRegSym r (registers p))
-                                             | r <- allocRegs]
+  Nothing -> minimumBy (comparing $ isJust . mfilter (`S.member`debug (actives i)) . lookupSymIn (debug $ registers p))
+             allocRegs
 varSize s = fromMaybe defSize $< asks (M.lookup s . sizes) 
 frameAddr s = stateF frameF (withAddr defSize s)
 
@@ -175,33 +173,34 @@ withFreeSet m = infos >>= \(i,p,f) -> do
           (Nothing,Just _) -> LT
           _ -> compare r r'
         (Just v,Just v') -> (isActive v`compare`isActive v')`mappend`compare r r'
-      regVar r = BM.lookupR r $ registers p
-      fRegVar r = BM.lookupR r $ fregisters f
+      regVar = lookupSymIn $ registers p
+      fRegVar = lookupSymIn $ fregisters f
       isActive v = S.member v $ actives i
   evalStateT m (SB.fromList cmp allocRegs)
 
 allocReg sym = lift (future $ gets fregisters) >>= \regs -> do
   let st free = (r,SB.delete r free)
         where r | SB.null free = r15
-                | otherwise = fromMaybe (SB.findMin free) $ verify (`SB.member`free) $ lookupSymReg sym regs 
+                | otherwise = fromMaybe (SB.findMin free) $ mfilter (`SB.member`free) $ lookupRegIn regs sym
   r <- state st
-  lift $ modifyF registersF $ BM.insert sym r
   return r
     
 noFuture m = StateT s
-  where s t = RWTL (\r (p,f) -> let (p,_,a,w) = runRWTL (runStateT m t) r (p,f) in (p,f,a,w))
+  where s t = RWTL (\r p f -> let (p',_,a,w) = runRWTL (runStateT m t) r p f in (p',f,a,w))
 
-loadRoot (Just s) = lift get >>= \p -> case lookupSymReg s (registers p) of
+loadRoot (Just s) = lift get >>= \p -> case lookupRegIn (registers p) s of
   Just r -> return r
   Nothing -> do
     r <- allocReg s
     a <- lift (frameAddr s)
-    tellCode $ ld r (rsp,fi a,defSize) 
+    lift $ modifyF registersF $ BM.insert s r
+    tellCode $ ld r (rsp,fi a,defSize)
     return r
 loadRoot Nothing = return rsp
 
-storeRegs regs = noFuture $ lift infos >>= \(i,p,f) -> do
-  let vars = [(r,s,M.lookup s $ bindings i) | r <- regs, s <- maybeToList $ lookupRegSym r (registers p)]
+storeRegs regs = noFuture $ lift get >>= \p -> do
+  (_,_,_,binding) <- miscInfos
+  let vars = [(r,s,binding s) | (r,Just s) <- zip regs (map (lookupSymIn (registers p)) regs)]
       parent (_,_,b) = fmap fst b
       groups = classesBy ((==)`on`parent) vars
       storeGroup g = do
@@ -211,11 +210,8 @@ storeRegs regs = noFuture $ lift infos >>= \(i,p,f) -> do
                 n <- maybe (frameAddr s) (return . snd) b
                 sz <- varSize s
                 tellCode $ st (base,fi n,fi sz) r
-      restrict m = do
-        free <- get
-        let (free',occ) = SB.partition isFree free
-            isFree r = isNothing $ lookupRegSym r (registers p)
-        put free' >> m >> modify (SB.union occ)
+      restrict m = gets (SB.partition isFree) >>= \(free',occ) -> put free' >> m >> modify (SB.union occ)
+        where isFree = isNothing . lookupSymIn (registers p)
   restrict $ mapM_ storeGroup groups
   lift $ modifyF registersF $ \rs -> foldr BM.delete rs [s | (_,s,_) <- vars]
 
@@ -236,11 +232,13 @@ loadArgs args = do
         argNew = runKleisli (left $ k allocReg ||| k return)
     modify $ \s -> foldr SB.delete s fixed
     allocs <- mapM argAlloc args >>= mapM argNew 
-    let assocs = lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
+    let assocs = filter (\(r,arg,_) -> not $ (myWorkIsDone r ||| const False) (argVal arg))
+                 $ lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
         bind (SymVal _ s) | isLocal s = binding s
                           | otherwise = Nothing
         groups = classesBy ((==)`on`parent) assocs
         parent (_,_,b) = fmap fst b
+        myWorkIsDone r s = lookupRegIn (registers p) s == Just r
         loadGroup g = do
           base <- loadRoot $ parent $ head g
           lift $ mapM_ (load base) g
@@ -252,7 +250,7 @@ loadArgs args = do
                     let SymVal t _ = arg
                     tellCode $ if t==Value then ld r (base,fi n,fi sz) else lea r base (fi n)
                 
-    storeRegs $ lefts allocs
+    storeRegs [r | (r,_,_) <- assocs]
     mapM_ loadGroup groups
     lift $ modifyF registersF $ \m -> foldr (uncurry BM.insert) m [(s,r) | ((SymVal _ s,_),Left r) <- zip args allocs]
     return allocs
@@ -298,7 +296,7 @@ compile (Op BCall d (fun:args)) = withFreeSet $ do
   
 compile (Op b d [a,a']) | b`elem`[BAdd,BSub,BMul,BAnd,BOr,BXor] = withFreeSet $ do
   [v,v'] <- loadArgs [(a,Nothing),(a',Nothing)]
-  dest <- lift $ getDestReg d
+  dest <- lift $ destRegister d
   storeRegs [dest]
   let ops = fromJust $ lookup b [(BAdd,adds),(BSub,subs),(BMul,muls),(BAnd,bwands),(BOr,bwors),(BXor,bwxors)]
       code = case (v,v') of
@@ -310,7 +308,7 @@ compile (Op b d [a,a']) | b`elem`[BAdd,BSub,BMul,BAnd,BOr,BXor] = withFreeSet $ 
                         | otherwise = return ()
 compile (Op b d args@(a:a':t)) | isBinOp b = mapM_ compile $ Op b d [a,a']:[Op b d [SymVal Value d,a''] | a'' <- t]
                                | otherwise = undefined
-compile (Op _ _ _) = return ()
+compile i@(Op _ _ _) = return ()
 compile (Branch v alts) = return ()
 compile (Bind bv Nothing) = modifyF frameF (frameAlloc defSize bv) >> return ()
 compile (Bind bv _) = return ()

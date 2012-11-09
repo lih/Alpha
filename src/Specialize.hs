@@ -27,39 +27,38 @@ import qualified Data.Set as S
 
 import System.IO.Unsafe
 import My.Prelude
+import Debug.Trace
 
-specialize arch env (Code args code retVar) = foo
+specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence codes)
   where
-    foo = (sum sizes,B.concat $< sequence codes)
-    -- foo = (length retCode, return (B.pack retCode))
-    (estimates,sizes,codes) = unzip3 [v | Right (_,BC v) <- elems instructions]
+    ~(estimates,sizes,codes) = unzip3 [v | Right (_,BC v) <- elems instructions]
     (past,future) = archInitials arch args retVar
     (bounds,instr,nexts,prevs) = navigate code
     defSize = archDefaultSize arch
-    positions = listArray bounds [(e,s) | e <- sums estimates, s <- sums sizes]
+    positions = listArray bounds [(e,s) | e <- sums estimates | s <- sums sizes]
     codeTree = spanningTree 0 nexts
-    runInstr i (p,f) past = runRWTL (compile $ instr i) ((infos!i) (i,getPos)) (p,f)
+    runInstr i (p,f) past = runRWTL (compile $ instr i) ((infos!i) (i,getPos)) p f
       where compile = archCompileInstr arch
-            getPos j = (e'-e,d'-d,past j)
-              where (e,d) = positions!i ; (e',d') = positions!j
+            getPos j = (e,d,past j) where ~(e,d) = positions!j
 
     treeArray next seed = ret
       where assocs = (0,seed):concatMap f (nodeList codeTree)
             ret = array bounds assocs
             f (Node i subs) = [(j,next j (ret!i) (instr j)) | Node j _ <- subs]
 
-    instructions = execState (specializeTree past codeTree) initialArray
+    instructions = execState (execStateT (specializeTree past codeTree) (1,constA bounds 0)) initialArray
       where
-        specializeTree p (Node i subs) = gets ((!i) >>> fromLeft) >>= \f -> do
+        specializeTree p (Node i subs) = do
           past <- gets (!)
-          let newVal@(p',_,_,vals) = runInstr i (p,f) (either (const Nothing) (Just . fst) . past)
-          modify (// [(i,Right (p,vals))])
+          let newVal@(p',_,_,code) = runInstr i (p,f) (either (const Nothing) (Just . fst) . past)
+              f = fromLeft $ past i
+          modify (// [(i,Right (p,code))])
           mapM_ (specializeTree p') subs
         initialArray = fmap Left init
           where init = array bounds (concatMap f $ branches codeTree)
                 f br = (n,fut):[(i,snd4 $ runInstr j (undefined,init!j) (const Nothing)) | (i,j) <- zip br (tail br)]
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
-
+    
     infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA `applyA` localsA
       where root i v = fmap fst $ M.lookup v (bindingsA!i)
             bindingsA = treeArray next M.empty
