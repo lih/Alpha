@@ -1,13 +1,12 @@
 {-# LANGUAGE RankNTypes #-}
-module Specialize.Types(
-  module Data.Word, module My.Control.Monad.TimeLine,
-  module PCode, module ID,module Specialize.Frame,
-  Register(..),
-  Architecture(..),
-  Info(..), Past(..),Future(..),
-  frameF, bindingsF, registersF, emptyFuture) where
+module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
+                       ,module PCode, module ID,module Specialize.Frame
+                       ,Register(..),BinCode(..)
+                       ,Architecture(..)
+                       ,Info(..)
+                       ,MemState(..),Future(..), emptyFuture
+                       ,frameF, registersF) where
 
-import Control.Monad.Trans.Reader
 import Data.Bimap
 import Data.ByteString
 import Data.Map
@@ -16,18 +15,23 @@ import Data.Set
 import Data.Word
 import ID
 import My.Control.Monad.State
-import My.Control.Monad.TimeLine
+import My.Control.Monad.RWTL
 import PCode
 import Specialize.Frame
+
+newtype BinCode = BC (Int,Int,IO ByteString)
+instance Monoid BinCode where
+  mempty = BC (0,0,return mempty)
+  mappend (BC (e,s,v)) (BC (e',s',v')) = BC (e+e',s+s',liftM2 (<>) v v')
 
 type Register = Int
 data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
-  archInitials     :: [BindVar] -> BindVar -> (Past,Future),
-  archCompileInstr :: Instruction -> ReaderT Info (TimeLine Past Future) (Int,Int,IO ByteString)
+  archInitials     :: [BindVar] -> BindVar -> (MemState,Future),
+  archCompileInstr :: Instruction -> RWTL Info BinCode MemState Future ()
   }
-data Past = Past {
+data MemState = MemState {
   registers  :: Bimap ID Register,
   frame :: Frame
   }
@@ -43,11 +47,10 @@ data Info = Info {
   actives    :: Set ID,
   clobbers   :: Relation ID ID,
   locals     :: Set ID,
-  branchPos  :: (Int,Int -> (Int,Int,Maybe Past))
+  branchPos  :: (Int,Int -> (Int,Int,Maybe MemState))
   }
 
 frameF = Field (frame,\f p -> p { frame = f })
 registersF = Field (registers,\r p -> p { registers = r })
-bindingsF = Field (bindings,\a p -> p { bindings = a })
 
 emptyFuture = Future Data.Bimap.empty

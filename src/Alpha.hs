@@ -63,7 +63,7 @@ doCompile opts = case programs opts of
       top <- gets compTop
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-      writeElf language contents
+      writeElf language $ debug contents
     compileLanguage name = debugM $ do
       source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name

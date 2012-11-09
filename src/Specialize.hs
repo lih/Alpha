@@ -32,13 +32,13 @@ specialize arch env (Code args code retVar) = foo
   where
     foo = (sum sizes,B.concat $< sequence codes)
     -- foo = (length retCode, return (B.pack retCode))
-    (estimates,sizes,codes) = unzip3 [v | Right (_,v) <- elems instructions]
+    (estimates,sizes,codes) = unzip3 [v | Right (_,BC v) <- elems instructions]
     (past,future) = archInitials arch args retVar
     (bounds,instr,nexts,prevs) = navigate code
     defSize = archDefaultSize arch
     positions = listArray bounds [(e,s) | e <- sums estimates, s <- sums sizes]
     codeTree = spanningTree 0 nexts
-    runInstr i (p,f) past = runTimeLine (runReaderT (compile $ instr i) ((infos!i) (i,getPos))) (p,f)
+    runInstr i (p,f) past = runRWTL (compile $ instr i) ((infos!i) (i,getPos)) (p,f)
       where compile = archCompileInstr arch
             getPos j = (e'-e,d'-d,past j)
               where (e,d) = positions!i ; (e',d') = positions!j
@@ -52,12 +52,12 @@ specialize arch env (Code args code retVar) = foo
       where
         specializeTree p (Node i subs) = gets ((!i) >>> fromLeft) >>= \f -> do
           past <- gets (!)
-          let newVal@(p',_,vals) = runInstr i (p,f) (either (const Nothing) (Just . fst) . past)
+          let newVal@(p',_,_,vals) = runInstr i (p,f) (either (const Nothing) (Just . fst) . past)
           modify (// [(i,Right (p,vals))])
           mapM_ (specializeTree p') subs
         initialArray = fmap Left init
           where init = array bounds (concatMap f $ branches codeTree)
-                f br = (n,fut):[(i,snd3 $ runInstr j (undefined,init!j) (const Nothing)) | (i,j) <- zip br (tail br)]
+                f br = (n,fut):[(i,snd4 $ runInstr j (undefined,init!j) (const Nothing)) | (i,j) <- zip br (tail br)]
                   where n = last br ; fut = if null (nexts n) then future else emptyFuture
 
     infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA `applyA` localsA

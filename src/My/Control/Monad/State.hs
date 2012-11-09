@@ -11,10 +11,10 @@ import Control.Monad.State hiding (withState)
 
 newtype Field f s = Field (s -> f,f -> s -> s)
 
-fstF = Field (fst,(\x (a,b) -> (x,b))) :: Field a (a,b)
-sndF = Field (snd,(\y (a,b) -> (a,y))) :: Field b (a,b)
+fstF = Field (fst,(\x ~(a,b) -> (x,b))) :: Field a (a,b)
+sndF = Field (snd,(\y ~(a,b) -> (a,y))) :: Field b (a,b)
 
-stateF (Field (m,m')) st = get >>= \s -> let (v,st') = st (m s) in put (m' st' s) >> return v
+stateF (Field (m,m')) st = get >>= \s -> let ~(v,st') = st (m s) in put (m' st' s) >> return v
 doF f st                 = stateF f (runState st)
 modifyF fld f            = stateF fld (\s -> ((),f s))
 getF (Field (f,_))       = gets f 
