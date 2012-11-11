@@ -7,6 +7,7 @@ import My.Prelude
 import My.Control.Monad
 import My.Control.Monad.State
 import My.Data.List
+import My.Data.Tree
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -14,7 +15,19 @@ import Data.Maybe
 import PCode
 import Syntax  
 
+import Translate
+
 import Debug.Trace
+
+uniquify [] = return []
+uniquify code = flatten $< descendM desc M.empty $ spanningTree 0 nexts
+  where (_,instr,nexts,_) = navigate code
+        desc (instr -> Bind bv v) m = do
+          news <- mapM (const $ state createSym) (bindSyms bv)
+          let m' = debug $ foldr (uncurry M.insert) m (zip (bindSyms bv) news)
+          return (Bind (translate (translateBy m') bv) (fmap (translateBy m) v),m')
+        desc i m = return (translate (translateBy m) (instr i),m)
+        translateBy m s = fromMaybe s $ M.lookup s m
 
 simplify :: Monad m => [Node] -> StateT CompileState m [Node]
 simplify start = do

@@ -18,7 +18,7 @@ import Syntax
 compile dest expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
   where st = do
           (_,(start,_)) <- compile' dest expr
-          simplify start >>= linearize
+          simplify start >>= linearize >>= lift . uniquify
 
 compile' dest (Symbol sym) = do
   name <- getSymName sym

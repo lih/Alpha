@@ -54,6 +54,7 @@ numSize n = length $ takeWhile (>0) $ iterate (`shiftR`8) n
 withSize n = (numSize n,return $ fi n)
 fromFields fs = foldl1 xor (zipWith shiftL (map (fst) fs) (scanl (+) 0 $ map snd fs))
 bytes = fis . iterate (`shiftR`8)
+frameToStack n = (-8)-fi n
 
 fromBytesN n ml = BC (n,n,liftM B.pack ml)
 fromBytes c = fromBytesN (length c) (return c)
@@ -155,7 +156,7 @@ cmps f = (cmp,cmpi,cmp',f)
         cmpi _ a = opi (codeFun codes) [0x3b] a a
         cmp' _ n a = movi r15 n >> cmp r15 r15 a
 
-calli (_,v) = tell $ fromBytesN 5 (liftM (\v -> [0xe8]++take 4 (bytes v)) v)
+calli pos (_,v) = tell $ fromBytesN 5 (liftM2 (\p v -> [0xe8]++take 4 (bytes (v-fi p-5))) pos v)
 call r = tellCode $ pre++[0xff]++post
   where (pre,post) = argBytes 2 r Nothing
 
@@ -245,7 +246,7 @@ storeRegs regs = lift get >>= \p -> do
         where store base (r,s,b) = do
                 n <- maybe (lift $ frameAddr s) (return . snd) b
                 sz <- varSize s
-                st (base,fi n,fi sz) r
+                st (base,frameToStack n,fi sz) r
       restrict m = gets (SB.partition isFree) >>= \(free',occ) -> put free' >> m >> modify (SB.union occ)
         where isFree = isNothing . lookupSymIn (registers p)
   restrict $ mapM_ storeGroup groups
@@ -282,7 +283,7 @@ loadArgs args = do
                     n <- maybe (lift $ frameAddr s) return $ fmap snd b
                     sz <- varSize s
                     let SymVal t _ = arg
-                    if t==Value then ld r (base,fi n,fi sz) else lea r base (fi n)
+                    if t==Value then ld r (base,frameToStack n,fi sz) else lea r base (fi n)
                 
     storeRegs [r | (r,_,_) <- assocs]
     mapM_ loadGroup groups
@@ -299,31 +300,39 @@ defaults args ret = (MemState pregs frame,Future fr)
            | otherwise = BM.empty
 
 compile (Op BCall d (fun:args)) = withFreeSet $ do
+  (instr,brInfo) <- asks branchPos
+  (myID,addrs) <- asks envInfo
   sizes <- protectFuture $ mapM argSize args
   let (MemState regs subFrame,_) = defaults [BindVar id (sz,0) 0 [] | (id,arg) <- argAssocs | sz <- sizes] undefined
       argAssocs = zip (map ID [0..]) args
+      start = BC (est,pos,undefined) where (est,pos,_) = brInfo instr
   (argVal,_,_,binding) <- miscInfos
-  protectFuture $ storeRegs [rax]
   modify (SB.delete rax)
-  func:_ <- loadArgs $ (fun,Nothing):[(arg,r) | (id,arg) <- argAssocs, let r = BM.lookup id regs, isJust r]
-  protectFuture $ get >>= storeRegs . SB.toList
+  (func:_,cload) <- listen $ loadArgs $ (fun,Nothing):[(arg,r) | (id,arg) <- argAssocs, let r = BM.lookup id regs, isJust r]
+  protectFuture $ do
+    (_,cstore) <- listen $ get >>= \free -> storeRegs (rax:SB.toList free)
 
-  top <- lift $ gets (frameTop . frame)
-  let storeBig (id,arg) = case lookupAddr id subFrame of
-        Just addr -> case argVal arg of
-          Left s -> do
-            let loadAddr (r,n) = do a <- frameAddr r ; ld r15 (rsp,fi a,defSize) ; return (r15,a)
-            (base,n) <- maybe ((rsp,) $< frameAddr s) loadAddr $ binding s
-            sz <- argSize arg
-            let addrs = [0,defSize..sz]
-            sequence_ [ld rax (base,fi$n+a,fi sz) >> st (rsp,fi$top+defSize+addr+a,fi sz) rax
-                      | a <- addrs, let sz = min defSize (sz-a)]
-          Right v -> movi r15 v >> st (rsp,fi $ top+defSize+addr,defSize) rax
-        Nothing -> return ()
-  protectFuture $ lift $ mapM_ storeBig argAssocs
-  addi rsp rsp $ withSize top
-  runKleisli (k call ||| k calli) func
-  subi rsp rsp $ withSize top
+    top <- lift $ gets (frameTop . frame)
+    let storeBig (id,arg) = case lookupAddr id subFrame of
+          Just addr -> case argVal arg of
+            Left s -> do
+              let loadAddr (r,n) = do a <- frameAddr r ; ld r15 (rsp,fi a,defSize) ; return (r15,a)
+              (base,n) <- maybe ((rsp,) $< frameAddr s) loadAddr $ binding s
+              sz <- argSize arg
+              let addrs = [0,defSize..sz]
+              sequence_ [ld rax (base,fi$n+a,fi sz) >> st (rsp,fi $ top+defSize+addr+a,fi sz) rax
+                        | a <- addrs, let sz = min defSize (sz-a)]
+            Right v -> movi r15 v >> st (rsp,fi $ top+defSize+addr,defSize) rax
+          Nothing -> return ()
+    (_,cstore') <- listen $ do
+      lift $ mapM_ storeBig argAssocs
+      subi rsp rsp $ withSize top
+    let pos = thisFunc >§ \p -> p+instrPos+delta
+        BC ~(_,delta,_) = cload <> cstore <> cstore'
+        (_,instrPos,_) = brInfo instr ; thisFunc = addrs myID
+    runKleisli (k call ||| k (calli pos)) func
+    addi rsp rsp $ withSize top
+
 compile (Op BSet d [s]) = withFreeSet $ do
   [v] <- loadArgs [(s,Nothing)]
   protectFuture $ do

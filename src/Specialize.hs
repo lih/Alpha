@@ -89,7 +89,7 @@ specialize arch env (Code args code retVar) = seq (debug instructions') (sum siz
                                                                                   , s' <- s:maybeToList (root i s)]
                                                        <> S.fromList (catMaybes [root i s | SymVal Address s <- SymVal Address v:vs])
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id
-                            addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
+                            addActives (Bind _ v) s = maybe id S.insert v s
                             addActives _ s = s
             localsA = treeArray next (S.fromList [v | bv <- retVar:args, v <- bindSyms bv])
               where next _ s (Bind bv _) = s `S.union` S.fromList (bindSyms bv)
@@ -97,14 +97,13 @@ specialize arch env (Code args code retVar) = seq (debug instructions') (sum siz
                     next _ s _ = s
             clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)
             clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- retVar:args])
-              where next i r (Bind bv v) = insertManyR r' assocs
-                      where r' = r `restrictBy` S.fromList (bindSyms bv)
-                            assocs = [ass | bv <- bindNodes bv
+              where next i r (Bind bv v) = insertManyR r assocs
+                      where assocs = [ass | bv <- bindNodes bv
                                           , s <- bindSyms bv
                                           , ass <- [(bindSym bv,s),(s,bindSym bv)]]
                                      ++[ass | v <- maybeToList v
                                             , ref <- S.toList $ references i v
-                                            , s <- maybe [v] S.toList (R.lookupRan ref r')
+                                            , s <- maybe [v] S.toList (R.lookupRan ref r)
                                             , ass <- [(s,ref),(ref,s)]]
                     next _ r _ = r
             lookupRefs v r = fromMaybe (S.singleton (ID (-1))) $ R.lookupRan v r
@@ -114,10 +113,7 @@ specialize arch env (Code args code retVar) = seq (debug instructions') (sum siz
                       where r' = S.delete v (R.dom r) R.<| r
                             refs = S.fromList [s | SymVal Address s <- vs]
                                    <> S.unions [lookupRefs v r | SymVal Value s <- vs]
-                    next _ r (Bind bv _) = restrictBy r (S.fromList (bindSyms bv))
                     next _ r _ = r
-
-restrictBy r s = (R.dom r S.\\ s) R.<| r R.|> (R.ran r S.\\ s)
 
 constA bs v = accumArray const v bs []
 zipWithA f a b = array (bounds a) [(i,f x y) | (i,x) <- assocs a | y <- elems b]
