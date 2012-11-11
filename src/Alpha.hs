@@ -43,7 +43,7 @@ printVersion = putStrLn $ "Alpha version "++version
 newtype Str = Str String
 instance Show Str where show (Str s) = s
 
-doTestOlder = return True -- for testing purposes, turn makefile-style file dependencies on or off
+doTestOlder = return True -- for testing purposes, turn makefile-style file dependencies checks on or off
 
 doCompile opts = case programs opts of
   [] -> interactive

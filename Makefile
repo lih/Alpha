@@ -9,8 +9,11 @@ configure:
 run: all
 	cd exec && ../bin/alpha < in
 
+install: all
+	cabal install
+
 find:
-	egrep -Rn 'undefined' src 
+	egrep -Rn 'debug' src 
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

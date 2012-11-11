@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
                        ,module PCode, module ID,module Specialize.Frame
-                       ,Register(..),BinCode(..)
+                       ,Register(..),BinCode(..), isEmptyCode
                        ,Architecture(..)
                        ,Info(..)
                        ,MemState(..),Future(..), emptyFuture
@@ -22,7 +22,11 @@ import Specialize.Frame
 newtype BinCode = BC (Int,Int,IO ByteString)
 instance Monoid BinCode where
   mempty = BC (0,0,return mempty)
-  mappend (BC (e,s,v)) (BC (e',s',v')) = BC (e+e',s+s',liftM2 (<>) v v')
+  mappend (BC ~(e,s,v)) (BC ~(e',s',v')) = BC (e+e',s+s',liftM2 (<>) v v')
+instance Show BinCode where
+  show (BC (e,a,_)) = show (e,a)
+
+isEmptyCode (BC (e,_,_)) = e==0
 
 type Register = Int
 data Architecture = Arch {

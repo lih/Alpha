@@ -1,10 +1,10 @@
 module My.Data.Tree(module Data.Tree
                    ,nubT,iterateT
                    ,spanningTree
-                   ,branches, nodeList) where
+                   ,branches, nodeList, descend) where
 
 import Data.Tree
-import Data.Set as S
+import qualified Data.Set as S
 import Control.Monad.State
 
 nubT t = evalState (unfoldTreeM unfold t) S.empty
@@ -20,5 +20,5 @@ spanningTree seed nexts = nubT $ iterateT seed nexts
 
 nodeList n@(Node _ subs) = n:concatMap nodeList subs 
 
-test = Node 1 [Node 2 [Node 3 [],Node 4 []],
-               Node 5 [Node 6 [],Node 7 []]]
+descend f s (Node e subs) = Node e' (map (descend f s') subs)
+  where (e',s') = f e s
