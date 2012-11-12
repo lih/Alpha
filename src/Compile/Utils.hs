@@ -24,7 +24,7 @@ uniquify code = flatten $< descendM desc M.empty $ spanningTree 0 nexts
   where (_,instr,nexts,_) = navigate code
         desc (instr -> Bind bv v) m = do
           news <- mapM (const $ state createSym) (bindSyms bv)
-          let m' = debug $ foldr (uncurry M.insert) m (zip (bindSyms bv) news)
+          let m' = foldr (uncurry M.insert) m (zip (bindSyms bv) news)
           return (Bind (translate (translateBy m') bv) (fmap (translateBy m) v),m')
         desc i m = return (translate (translateBy m) (instr i),m)
         translateBy m s = fromMaybe s $ M.lookup s m

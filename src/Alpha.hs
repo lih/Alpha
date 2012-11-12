@@ -34,7 +34,7 @@ main = do
 execute s = case action s of
   PrintHelp -> printHelp
   PrintVersion -> printVersion
-  Compile -> print s >> doCompile s
+  Compile -> doCompile s
 
 version = "0.9.9"
 printHelp = putStrLn helpMsg
@@ -63,8 +63,8 @@ doCompile opts = case programs opts of
       top <- gets compTop
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-      writeElf language contents
-    compileLanguage name = debugM $ do
+      writeElf root contents
+    compileLanguage name = do
       source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
       let langFile = languageFile name
       b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
@@ -81,9 +81,8 @@ doCompile opts = case programs opts of
       let sTree = concat $ parseAlpha src str
       code <- mapM compileExpr sTree
       languageState $ modify $ \e -> exportLanguage $ e { initializeL = foldr concatCode [] code }
-      where compileExpr expr = print (fmap Str expr) >> do
+      where compileExpr expr = do
               symExpr <- languageState $ envCast expr
-              print symExpr
               trExpr <- doTransform symExpr
               (code,imports) <- languageState $ compile Nothing trExpr
               mapM_ (importLanguage compileLanguage (execCode . initializeL)) imports

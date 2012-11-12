@@ -1,5 +1,11 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module My.Control.Monad (module Control.Monad,($<),(>$),(>$<),(§),(§<),(>§),(>§<),(<&&>),(<||>),ifM,findM,lift2) where
+module My.Control.Monad (module Control.Monad
+                        ,($<),(>$),(>$<)
+                        ,(§),(§<),(>§),(>§<)
+                         ,(<&&>),(<||>)
+                         ,ifM,findM
+                         ,lift2
+                         ,doNothing) where
 
 import Control.Monad
 import Control.Monad.Trans
@@ -29,3 +35,4 @@ infixr 3 <||>
 findM p l = foldr fun (return Nothing) l
   where fun x ret = ifM (p x) (return $ Just x) ret
 
+doNothing = return ()

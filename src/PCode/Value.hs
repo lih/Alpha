@@ -16,6 +16,7 @@ data Value = SymVal ValType ID
 
 varEqVal n (SymVal Value n') = n==n'
 varEqVal _ _ = False
+symValType (SymVal t _) = t
 
 readConstant s = let (a,b) = break (=='#') (filter (/='-') s) in eitherToMaybe $
   parseInt 10 a >>= \r -> if null b then return r else parseInt r (tail b)

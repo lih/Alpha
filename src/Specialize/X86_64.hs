@@ -1,11 +1,12 @@
 {-# LANGUAGE ViewPatterns, TupleSections, ParallelListComp, ImplicitParams, NoMonomorphismRestriction, Rank2Types #-}
-module Specialize.X86_64(arch_x86_64) where
+module Specialize.X86_64(arch_x86_64,execStub,initStub) where
 
 import Control.Monad.Writer.Class
 
 import Control.Arrow
 import Control.Monad.Reader
 import Control.Monad.Trans
+import Control.Monad.Writer
 import Data.Bits
 import Data.Char
 import Data.Function
@@ -37,6 +38,21 @@ type OpT = MonadWriter BinCode m => (Int -> Int -> Int -> m ()
                                     ,Integer -> Integer -> Integer)
 
 arch_x86_64 = Arch "x86_64" defSize defaults compile
+(execStub,initStub) = (writerStub exec,writerStub init)
+  where callStub loadArgs = do
+          mapM_ push saved
+          loadArgs
+          call rdi
+          mapM_ pop saved
+          tellCode [0xc3]
+        saved = rbx:rbp:[r12..r15]
+        init = callStub (mov rdx rsi)
+        exec = callStub (return ())
+        push r = tellCode $ pre++[0x50.|.(fi r.&.7)]
+          where (pre,_) = argBytesWide False 0 r Nothing
+        pop r = tellCode $ pre++[0x58.|.(fi r.&.7)]
+          where (pre,_) = argBytesWide False 0 r Nothing
+        writerStub stub = let BC (_,_,code) = execWriter stub in code
 
 defSize = 8
 ([rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8,r9,r10,r11,r12,r13,r14,r15],allocRegs) =
@@ -45,6 +61,8 @@ defSize = 8
 
 fis = fmap fromIntegral ; fi = fromIntegral
 k = Kleisli
+a <|||> b = runKleisli (k a ||| k b)
+leftK f = runKleisli (left $ k f)
 
 showHex n = reverse $ map (intToDigit . fromIntegral . (`mod`16)) $ take 2 $ iterate (`div`16) (n :: Word8)
 showCode = intercalate " " . map showHex
@@ -54,7 +72,6 @@ numSize n = length $ takeWhile (>0) $ iterate (`shiftR`8) n
 withSize n = (numSize n,return $ fi n)
 fromFields fs = foldl1 xor (zipWith shiftL (map (fst) fs) (scanl (+) 0 $ map snd fs))
 bytes = fis . iterate (`shiftR`8)
-frameToStack n = (-8)-fi n
 
 fromBytesN n ml = BC (n,n,liftM B.pack ml)
 fromBytes c = fromBytesN (length c) (return c)
@@ -111,9 +128,12 @@ ld d (s,n,size) = load
           sh sz
           if sz==1 && d>=4 && d<8
             then (if fst then return () else mov r15 d) >> ld r15 (s,n+i,1) >> mov d r15
-            else tellCode $ pre++code++suf
+            else tellCode $ pre'++pre++code++suf
           where (pre,suf) = argBytesWide (sz==8) d s (Just (n+i))
-                code = fromJust (lookup sz [(8,[0x8b]),(4,[0x8b]),(2,[0x66,0x8b]),(1,[0x8a])])
+                (pre',code) = fromJust (lookup sz [(8,([],[0x8b]))
+                                                  ,(4,([],[0x8b]))
+                                                  ,(2,([0x66],[0x8b]))
+                                                  ,(1,([],[0x8a]))])
                 sh sz | fst||sz==8 = return ()
                       | otherwise = shli d d (withSize (sz*8))
 st (_,_,0) _ = return ()
@@ -126,10 +146,13 @@ st (d,n,size) s = store
         stChunk (i,sz) lst = do
           (if sz==1 && d>=4 && d<8
             then mov r15 s >> st (d,n+i,1) r15
-            else tellCode $ pre++code++suf)
+            else tellCode $ pre'++pre++code++suf)
           sh sz
           where (pre,suf) = argBytesWide (sz==8) s d (Just (n+i))
-                code = fromJust (lookup sz [(8,[0x89]),(4,[0x89]),(2,[0x66,0x89]),(1,[0x88])])
+                (pre',code) = fromJust (lookup sz [(8,([],[0x89]))
+                                                  ,(4,([],[0x89]))
+                                                  ,(2,([0x66],[0x89]))
+                                                  ,(1,([],[0x88]))])
                 sh sz | lst = rori s s ((8-i)*8)
                       | otherwise = rori s s (sz*8)
 
@@ -158,7 +181,7 @@ cmps f = (cmp,cmpi,cmp',f)
 
 calli pos (_,v) = tell $ fromBytesN 5 (liftM2 (\p v -> [0xe8]++take 4 (bytes (v-fi p-5))) pos v)
 call r = tellCode $ pre++[0xff]++post
-  where (pre,post) = argBytes 2 r Nothing
+  where (pre,post) = argBytesWide False 2 r Nothing
 
 opsCode (rr,ri,ir,ii) dest v v' = case (v,v') of
   (Left r,Left r') -> rr dest r r'
@@ -166,24 +189,28 @@ opsCode (rr,ri,ir,ii) dest v v' = case (v,v') of
   (Right v,Left r) -> ir dest v r
   (Right (s,n),Right (s',n')) -> movi dest (max s s',liftM2 ii n n')
 
-associate d r = modifyF registersF $ BM.insert d r
-frameAddr s = stateF frameF (withAddr defSize s)
+associate r (Just s) = modifyF registersF $ BM.insert s r
+associate r Nothing = modifyF registersF $ BM.deleteR r
+frameAddr s = stateF frameF (withAddr defSize s) >§ \n -> (-8)-n
 lookupSymIn = flip BM.lookupR
 lookupRegIn = flip BM.lookup
-lookupArgReg (SymVal Value s) m = BM.lookup s m
-lookupArgReg _ _ = Nothing
+argValSym (SymVal Value s) = Just s
+argValSym _ = Nothing
+lookupArgReg arg m = argValSym arg >>= lookupRegIn m
 
-miscInfos = ask >>= \info -> do
-  let argVal (IntVal n) = Right $ withSize n
-      argVal (SymVal Size s) = Right $ withSize $ fromMaybe defSize $ M.lookup s (sizes info)
-      argVal (SymVal SymID (ID s)) = Right $ withSize $ s
-      argVal (SymVal _ s) = maybe (Left s) (Right . (4,)) $ globVal s
-      globVal s = if isLocal s then Nothing else Just (fi $< snd (envInfo info) s)
-      isLocal s = S.member s (locals info)
-      binding s = M.lookup s (bindings info)
-  return (argVal,globVal,isLocal,binding)
+argVal (IntVal n) = Right $ withSize n
+argVal (SymVal Size s) = Right $ withSize $ fromMaybe defSize $ M.lookup s (sizes ?info)
+argVal (SymVal SymID (ID s)) = Right $ withSize $ s
+argVal (SymVal _ s) = maybe (Left s) (Right . (4,)) $ globVal s
+globVal s = if isLocal s then Nothing else Just (toInteger $< snd (envInfo ?info) s)
+isLocal s = S.member s (locals ?info)
+binding s = M.lookup s (bindings ?info)
+isActive s = S.member s (actives ?info)
+varSize s = fromMaybe defSize (M.lookup s $ sizes ?info) 
+argSize (SymVal Value s) = varSize s
+argSize _ = defSize
 
-withFreeSet m = liftM3 (,,) ask get (future get) >>= \(i,p,f) -> do
+withFreeSet m = liftM2 (,) get (future get) >>= \(p,f) -> do
   let cmp r r' = case (regVar r,regVar r') of
         (Just _,Nothing) -> GT
         (Nothing,Just _) -> LT
@@ -194,75 +221,69 @@ withFreeSet m = liftM3 (,,) ask get (future get) >>= \(i,p,f) -> do
         (Just v,Just v') -> (isActive v`compare`isActive v')`mappend`compare r r'
       regVar = lookupSymIn $ registers p
       fRegVar = lookupSymIn $ fregisters f
-      isActive v = S.member v $ actives i
   evalStateT m (SB.fromList cmp allocRegs)
 
-protectFuture m = StateT s
+readFuture m = StateT s
   where s t = RWTL (\r p f -> let ~(p',_,a,w) = runRWTL (runStateT m t) (r,f) p undef in (p',f,a,w))
         undef = error "Illegal use of protected future"
-unProtectFuture m = StateT s
+unReadFuture m = StateT s
   where s t = RWTL (\(r,f) p _ -> runRWTL (runStateT m t) r p f)
 preserve m = StateT s
-  where s t = RWTL (\r p f -> let (_,f',a,w) = runRWTL (runStateT m t) r p f in (p,f',a,w) )
+  where s t = RWTL (\r p f -> let (_,_,a,w) = runRWTL (runStateT m t) r p f in (p,f,a,w) )
+regInfo = liftM2 (,) (gets registers) (asks (fregisters . snd))
 
-infos = liftM3 (,,) (asks fst) get (asks snd)
-varSize s = fromMaybe defSize $< asks (M.lookup s . sizes . fst) 
-argSize (SymVal Value s) = varSize s
-argSize _ = return defSize
-
-allocReg sym = asks (fregisters . snd) >>= \regs -> do
+allocReg sym = lift regInfo >>= \(_,regs) -> do
   let st free = (r,SB.delete r free)
         where r | SB.null free = r15
-                | otherwise = fromMaybe (SB.findMin free) $ mfilter (`SB.member`free) $ lookupRegIn regs sym
-  r <- state st
-  return r
+                | otherwise = fromMaybe (SB.findMin free) $ mfilter (`SB.member`free)
+                                                                     $ lookupRegIn regs sym
+  state st
 
-destRegister d = lift infos >>= \(i,p,f) -> 
-  case mfilter (\r -> maybe True (==d) $ BM.lookupR r (registers p)) $ lookupRegIn (fregisters f) d of
+destRegister d = lift regInfo >>= \(regs,fregs) -> 
+  case mfilter (\r -> maybe True (==d) $ BM.lookupR r regs) $ lookupRegIn fregs d of
     Just r -> return r
     Nothing -> case find ((==Just d) . findReg) allocRegs `mplus` find (isNothing . findReg) allocRegs of
       Just r -> return r
       Nothing -> storeRegs [head allocRegs] >> return (head allocRegs)
-      where findReg s = lookupSymIn (registers p) s `mplus` lookupSymIn (fregisters f) s
+      where findReg s = lookupSymIn regs s `mplus` lookupSymIn fregs s
 
-loadRoot (Just s) = lift get >>= \p -> case lookupRegIn (registers p) s of
+loadRoot (Just s) = lift regInfo >>= \(regs,_) -> case lookupRegIn regs s of
   Just r -> return r
   Nothing -> do
     r <- allocReg s
     a <- lift (frameAddr s)
-    lift $ associate s r
+    lift $ associate r (Just s)
     ld r (rsp,fi a,defSize)
     return r
 loadRoot Nothing = return rsp
 
-storeRegs regs = lift get >>= \p -> do
-  (_,_,_,binding) <- unProtectFuture miscInfos
-  let vars = [(r,s,binding s) | (r,Just s) <- zip regs (map (lookupSymIn (registers p)) regs)]
+storeRegs rs = lift regInfo >>= \(regs,_) -> do
+  let vars = [(r,s,binding s) | (r,Just s) <- zip rs (map (lookupSymIn regs) rs)]
       parent (_,_,b) = fmap fst b
       groups = classesBy ((==)`on`parent) vars
       storeGroup g = do
         reg <- loadRoot $ parent $ head g
-        mapM_ (store reg) g
+        lift $ mapM_ (store reg) g
         where store base (r,s,b) = do
-                n <- maybe (lift $ frameAddr s) (return . snd) b
-                sz <- varSize s
-                st (base,frameToStack n,fi sz) r
+                n <- maybe (frameAddr s) (return . snd) b
+                st (base,fi n,fi (varSize s)) r
       restrict m = gets (SB.partition isFree) >>= \(free',occ) -> put free' >> m >> modify (SB.union occ)
-        where isFree = isNothing . lookupSymIn (registers p)
+        where isFree = isNothing . lookupSymIn regs
   restrict $ mapM_ storeGroup groups
   lift $ modifyF registersF $ \rs -> foldr BM.delete rs [s | (_,s,_) <- vars]
 
 loadArgs args = do
-  lift $ future $ modify $ \f -> f { fregisters = foldr (uncurry BM.insert) (fregisters f)
-                                                  [(s,r) | (SymVal Value s,Just r) <- args] }
-  protectFuture $ do
-    (argVal,globVal,isLocal,binding) <- unProtectFuture miscInfos
-    p <- lift get
+  let modFRegs regs = foldr ($) regs [maybe (BM.deleteR r) (flip BM.insert r) $ argValSym arg
+                                     | (arg,Just r) <- args]
+  lift $ future $ modifyF fregistersF $ modFRegs
+  readFuture $ do
+    (regs,_) <- lift regInfo
     let fixed = mapMaybe snd args
-        argAlloc (arg,Nothing) = runKleisli (left $ k f) (argVal arg)
-          where f s = get >§ \free -> maybe (Left s) Right $ mfilter (`SB.member` free) (BM.lookup s (registers p))
+        argAlloc (arg,Nothing) = leftK f (argVal arg)
+          where f s = get >§ \free -> maybe (Left s) Right
+                                      $ mfilter (`SB.member` free) (BM.lookup s regs)
         argAlloc (_,Just r) = return (Left $ Right r)
-        argNew = runKleisli (left $ k allocReg ||| k return)
+        argNew = leftK (allocReg <|||> return)
     modify $ \s -> foldr SB.delete s fixed
     alls <- mapM argAlloc args
     modify $ \s -> foldr SB.delete s [r | Left (Right r) <- alls]
@@ -273,22 +294,30 @@ loadArgs args = do
         bind _ = Nothing
         groups = classesBy ((==)`on`parent) assocs
         parent (_,_,b) = fmap fst b
-        myWorkIsDone r s = lookupRegIn (registers p) s == Just r
+        myWorkIsDone r s = lookupRegIn regs s == Just r
         loadGroup g = do
-          base <- loadRoot $ parent $ head g
+          base <- loadRoot (parent $ head g)
           mapM_ (load base) g
-          where load base (r,arg,b) = case argVal arg of
-                  Right v -> movi r v
-                  Left s -> do
-                    n <- maybe (lift $ frameAddr s) return $ fmap snd b
-                    sz <- varSize s
-                    let SymVal t _ = arg
-                    if t==Value then ld r (base,frameToStack n,fi sz) else lea r base (fi n)
-                
-    storeRegs [r | (r,_,_) <- assocs]
+          where load base (r,arg,b) = lift regInfo >>= \(regs,_) -> do
+                  when (isJust $ lookupSymIn regs r) (storeRegs [r])
+                  lift $ case argVal arg of
+                    Right v -> movi r v
+                    Left s -> case lookupRegIn regs s of
+                      Just r' -> mov r r'
+                      Nothing -> do
+                        n <- maybe (frameAddr s) return $ fmap snd b
+                        if symValType arg == Value
+                          then ld r (base,fi n,fi (varSize s))
+                          else lea r base (fi n)
+                  lift $ associate r ((Just ||| const Nothing) $ argVal arg)  
+
     mapM_ loadGroup groups
-    lift $ modifyF registersF $ \m -> foldr (uncurry BM.insert) m [(s,r) | ((SymVal _ s,_),Left r) <- zip args allocs]
     return allocs
+
+alignWith regs = do
+  loadArgs [(SymVal Value s,Just r) | (s,r) <- BM.toList regs]
+  free <- get
+  readFuture $ storeRegs (SB.toList free)
 
 defaults args ret = (MemState pregs frame,Future fr)
   where (regArgs,stArgs) = partition ((<=defSize) . bSize) args
@@ -299,82 +328,18 @@ defaults args ret = (MemState pregs frame,Future fr)
         fr | bSize ret<=defSize = BM.singleton (bindSym ret) retReg
            | otherwise = BM.empty
 
-compile (Op BCall d (fun:args)) = withFreeSet $ do
+compile i = ask >>= \info -> let ?info = info in compile' i
+    
+compile' (Op b d vs) = do
+  future $ modifyF fregistersF $ BM.delete d
+  compileOp b d vs
+  flip evalStateT (SB.empty compare) $ readFuture $ do
+    (regs,_) <- lift regInfo
+    storeRegs [r | (s,r) <- BM.toList regs, not (isActive s), isJust (binding s)]
+    lift $ modifyF registersF (BM.filter (const . isActive))
+compile' (Branch v alts) = withFreeSet $ do
   (instr,brInfo) <- asks branchPos
-  (myID,addrs) <- asks envInfo
-  sizes <- protectFuture $ mapM argSize args
-  let (MemState regs subFrame,_) = defaults [BindVar id (sz,0) 0 [] | (id,arg) <- argAssocs | sz <- sizes] undefined
-      argAssocs = zip (map ID [0..]) args
-      start = BC (est,pos,undefined) where (est,pos,_) = brInfo instr
-  (argVal,_,_,binding) <- miscInfos
-  modify (SB.delete rax)
-  (func:_,cload) <- listen $ loadArgs $ (fun,Nothing):[(arg,r) | (id,arg) <- argAssocs, let r = BM.lookup id regs, isJust r]
-  protectFuture $ do
-    (_,cstore) <- listen $ get >>= \free -> storeRegs (rax:SB.toList free)
-
-    top <- lift $ gets (frameTop . frame)
-    let storeBig (id,arg) = case lookupAddr id subFrame of
-          Just addr -> case argVal arg of
-            Left s -> do
-              let loadAddr (r,n) = do a <- frameAddr r ; ld r15 (rsp,fi a,defSize) ; return (r15,a)
-              (base,n) <- maybe ((rsp,) $< frameAddr s) loadAddr $ binding s
-              sz <- argSize arg
-              let addrs = [0,defSize..sz]
-              sequence_ [ld rax (base,fi$n+a,fi sz) >> st (rsp,fi $ top+defSize+addr+a,fi sz) rax
-                        | a <- addrs, let sz = min defSize (sz-a)]
-            Right v -> movi r15 v >> st (rsp,fi $ top+defSize+addr,defSize) rax
-          Nothing -> return ()
-    (_,cstore') <- listen $ do
-      lift $ mapM_ storeBig argAssocs
-      subi rsp rsp $ withSize top
-    let pos = thisFunc >§ \p -> p+instrPos+delta
-        BC ~(_,delta,_) = cload <> cstore <> cstore'
-        (_,instrPos,_) = brInfo instr ; thisFunc = addrs myID
-    runKleisli (k call ||| k (calli pos)) func
-    addi rsp rsp $ withSize top
-
-compile (Op BSet d [s]) = withFreeSet $ do
-  [v] <- loadArgs [(s,Nothing)]
-  protectFuture $ do
-    dest <- destRegister d
-    runKleisli (k (mov dest) ||| k (movi dest)) v
-    lift $ associate d dest
-compile (Op b d [a,a']) | b`elem`[BAdd,BSub,BMul,BAnd,BOr,BXor] = withFreeSet $ do
-  let ops = fromJust $ lookup b [(BAdd,adds),(BSub,subs),(BMul,muls),(BAnd,bwands),(BOr,bwors),(BXor,bwxors)]
-  [v,v'] <- loadArgs [(a,Nothing),(a',Nothing)]
-  protectFuture $ do
-    dest <- destRegister d
-    opsCode ops dest v v'
-    lift $ associate d dest
-                        | b`elem`[BLowerThan,BLowerEq,BEqual,BNotEqual,BGreaterEq,BGreaterThan] = withFreeSet $ do
-  let dest = 16 + fromJust (lookup b codes)
-      codes = [(BLowerThan,0xf),(BLowerEq,0xd),(BGreaterEq,0xc),(BGreaterThan,0xe),(BEqual,0x5),(BNotEqual,0x4)]
-      applys = [(BLowerThan,(<)),(BLowerEq,(<=)),(BGreaterEq,(>=)),(BGreaterThan,(>)),(BEqual,(==)),(BNotEqual,(/=))]
-      convert f n n' = if f n n' then 1 else 0
-  [v,v'] <- loadArgs [(a,Nothing),(a',Nothing)]
-  protectFuture $ do
-    opsCode (cmps $ convert $ fromJust (lookup b applys)) dest v v'
-    lift $ associate d dest
-                        | b`elem`[BMod,BDiv] = withFreeSet $ do
-  protectFuture $ storeRegs [rdx]
-  movi rdx $ withSize (0 :: Int)
-  [_,v] <- loadArgs [(a,Just rax),(a',Nothing)]
-  protectFuture $ case v of
-    Left r -> op [0xf7] 7 7 r
-    Right v -> opi (codeFun []) [0xf7] 7 7 v
-  lift $ associate d (case b of BMod -> rdx ; BDiv -> rax)
-
-compile (Op b d args@(a:a':t)) | isBinOp b = mapM_ compile $ Op b d [a,a']:[Op b d [SymVal Value d,a''] | a'' <- t]
-                               | otherwise = undefined
-compile i@(Op _ _ _) = return ()
-compile (Branch v alts) = withFreeSet $ do
-  (instr,brInfo) <- asks branchPos
-  let alignPast instr = preserve $ case brInfo instr of
-        (_,_,Just (registers -> regs)) -> protectFuture $ listening $ do
-          unProtectFuture $ loadArgs [(SymVal Value s,Just r) | (s,r) <- BM.toList regs]
-          free <- get
-          storeRegs (SB.toList free)
-        _ -> return mempty
+  let alignPast (brInfo -> (_,_,p)) = maybe doNothing (preserve . alignWith . registers) p
       jmpc short long (BC (e,a,_)) (BC (e',a',_)) = BC (length long+4,length code,return $ B.pack code)
         where de = e'-e ; da = a'-a
               code | de==0 = []
@@ -385,27 +350,112 @@ compile (Branch v alts) = withFreeSet $ do
 
   case alts of
     [def,null] -> do
-      (r,c) <- listen $ protectFuture $ do
+      (r,c) <- listen $ readFuture $ do
         r <- lift $ gets (lookupArgReg v . registers)
         case mfilter (>=16) r of
           Just r -> return r
-          Nothing -> unProtectFuture (loadArgs [(v,Nothing)]) >§ \[Left r] -> r
-      [al,al'] <- mapM alignPast [def,null]
+          Nothing -> unReadFuture (loadArgs [(v,Nothing)]) >§ \[Left r] -> r
+      [al,al'] <- mapM (listening . alignPast) [def,null]
       let [_,_,p1,_,p2,_,p3] = scanl mappend (start instr) codes
           (d1,jmp2) = if isEmptyCode al' then (start null,mempty) else (p2,jmp p3 (start null))
           codes = [c,jmpc cshort clong p1 d1,al,jmp p2 (start def),al',jmp2]
           cshort = [0x70+testCode] ; clong = [0x0f,0x80+testCode] ; testCode = fi $ r-16
       mapM_ tell codes
     [def] -> do
-      al <- alignPast def
+      al <- listening $ alignPast def
       let [_,_,p] = scanl mappend (start instr) codes
           codes = [al,jmp p (start def)]
       mapM_ tell codes
-    [] -> tellCode [0xc3]
+    [] -> readFuture $ do
+      p <- lift get
+      let isPresent s _ = isJust $ msum [void $ binding s
+                                        ,void $ lookupAddr s (frame p)
+                                        ,void $ lookupRegIn (registers p) s]
+      (_,fregs) <- lift $ regInfo
+      unReadFuture $ alignWith (BM.filter isPresent fregs)
+      tellCode [0xc3]
 
-compile (Bind bv Nothing) = modifyF frameF (frameAlloc defSize bv) >> return ()
-compile (Bind bv _) = return ()
-compile Noop = return ()
+compile' (Bind bv Nothing) = modifyF frameF (frameAlloc defSize bv)
+compile' (Bind bv _) = return ()
+compile' Noop = withFuture (align . fregisters)
+  where align regs = void $ withFreeSet $ loadArgs [(SymVal Value s,Just r) | (s,r) <- BM.toList regs]
 
-ignore m = return ()
-        
+compileOp BCall d (fun:args) = withFreeSet $ do
+  (instr,brInfo) <- asks branchPos
+  (myID,addrs) <- asks envInfo
+  let (MemState regs subFrame,_) = defaults [BindVar id (sz,0) 0 []
+                                            | (id,arg) <- argAssocs
+                                            | sz <- map argSize args] undefined
+      argAssocs = zip (map ID [0..]) args
+      start = BC (est,pos,undefined) where (est,pos,_) = brInfo instr
+
+  modify (SB.delete rax)
+  (func:_,cload) <- listen $ loadArgs
+                    $ (fun,Nothing):[(arg,r) | (id,arg) <- argAssocs
+                                             , let r = BM.lookup id regs, isJust r]
+  readFuture $ do
+    (_,cstore) <- listen $ get >>= \free -> storeRegs (rax:SB.toList free)
+
+    top <- lift $ gets (frameTop . frame)
+    let storeBig (id,arg) = case lookupAddr id subFrame of
+          Just addr -> case argVal arg of
+            Left s -> do
+              let loadAddr (r,n) = do a <- frameAddr r ; ld r15 (rsp,fi a,defSize) ; return (r15,a)
+              (base,n) <- maybe ((rsp,) $< frameAddr s) loadAddr $ binding s
+              let addrs = [0,defSize..sz]
+                  sz = argSize arg
+              sequence_ [ld rax (base,fi$n+a,fi sz) >> st (rsp,fi $ top+defSize+addr+a,fi sz) rax
+                        | a <- addrs, let sz = min defSize (sz-a)]
+            Right v -> movi r15 v >> st (rsp,fi $ top+defSize+addr,defSize) rax
+          Nothing -> return ()
+    (_,cstore') <- listen $ do
+      lift $ mapM_ storeBig argAssocs
+      subi rsp rsp $ withSize top
+    let pos = thisFunc >§ (+(instrPos+delta))
+        BC ~(_,delta,_) = cload <> cstore <> cstore'
+        (_,instrPos,_) = brInfo instr ; thisFunc = addrs myID
+    (call <|||> calli pos) func
+    addi rsp rsp $ withSize top
+    lift $ associate rax (Just d)
+
+compileOp BSet d [s] = withFreeSet $ do
+  [v] <- loadArgs [(s,Nothing)]
+  readFuture $ do
+    let dest r = maybe (destRegister d) (const $ return r) $ mfilter (not . isActive) $ argValSym s
+    r' <- dest $ (id ||| const 0) v 
+    (mov r' <|||> movi r') v
+    lift $ associate r' (Just d)
+compileOp b d [a,a'] | b`elem`[BAdd,BSub,BMul,BAnd,BOr,BXor] = withFreeSet $ do
+  let ops = fromJust $ lookup b [(BAdd,adds),(BSub,subs),(BMul,muls),(BAnd,bwands),(BOr,bwors),(BXor,bwxors)]
+  [v,v'] <- loadArgs [(a,Nothing),(a',Nothing)]
+  readFuture $ do
+    dest <- destRegister d
+    opsCode ops dest v v'
+    lift $ associate dest (Just d)
+                        | b`elem`[BLowerThan,BLowerEq,BEqual,BNotEqual,BGreaterEq,BGreaterThan] = withFreeSet $ do
+  let dest = 16 + fromJust (lookup b codes)
+      codes = [(BLowerThan,0xf),(BLowerEq,0xd),(BGreaterEq,0xc),(BGreaterThan,0xe),(BEqual,0x5),(BNotEqual,0x4)]
+      applys = [(BLowerThan,(<)),(BLowerEq,(<=)),(BGreaterEq,(>=)),(BGreaterThan,(>)),(BEqual,(==)),(BNotEqual,(/=))]
+      convert f n n' = if f n n' then 1 else 0
+  [v,v'] <- loadArgs [(a,Nothing),(a',Nothing)]
+  readFuture $ do
+    opsCode (cmps $ convert $ fromJust (lookup b applys)) dest v v'
+    lift $ associate dest (Just d)
+                        | b`elem`[BMod,BDiv] = withFreeSet $ do
+  [_,_,v] <- loadArgs [(a,Just rax),(IntVal 0,Just rdx),(a',Nothing)]
+  readFuture $ do
+    case mfilter (/=d) $ argValSym a of
+      Just s | isActive s -> storeRegs [rax]
+      _ -> return ()
+    case v of
+      Left r -> op [0xf7] 7 7 r
+      Right v -> opi (codeFun []) [0xf7] 7 7 v
+  lift $ associate (if b==BMod then rdx else rax) (Just d)
+
+compileOp b d args@(a:a':t) | isBinOp b =
+  sequence_ [compileOp b d [a,a']
+            | b <- repeat b
+            | d <- repeat d
+            | a <- a:repeat (SymVal Value d)
+            | a' <- a':t]
+compileOp _ _ _ = return ()

@@ -6,27 +6,29 @@ module Context(module Context.Types
               ,doTransform ,getAddressComp
               ,execCode) where
 
-import System.IO.Unsafe (unsafePerformIO)
 import Bindings.Posix.Sys.Mman
-import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
-import Foreign.C
-import Foreign.ForeignPtr.Unsafe
-import Data.Maybe
+import Context.Language as Lang
+import Context.Language
+import Context.Types
+import Data.ByteString
 import Data.ByteString.Unsafe
-import qualified Data.Map as M
 import Data.Functor.Identity
 import Data.IORef
+import Data.Maybe
+import qualified Data.Map as M
+import Elf(entryAddress)
+import Foreign.C
+import Foreign.ForeignPtr.Unsafe
+import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
+import ID
 import My.Control.Monad
 import My.Control.Monad.State
-
-import Context.Types
-import Context.Language
-import Specialize
 import PCode
-import ID
-import Elf(entryAddress)
-import Syntax
+import Specialize
 import Specialize.Architecture
+import Syntax
+import System.IO.Unsafe (unsafePerformIO)
+import My.Prelude
 
 foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
 
@@ -64,7 +66,7 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
 doTransform syn = gets transform >>= ($syn)
 
 initialContext = C lang jitA M.empty (fromIntegral entryAddress) return
-  where (lang,jitA) = execState (mapM_ st initialBindings) (empty,M.empty)
+  where (lang,jitA) = execState (mapM_ st initialBindings) (Lang.empty,M.empty)
           where st (s,v) = do
                   i <- stateF fstF (internSym s)
                   case v of
@@ -76,9 +78,9 @@ withDefaultContext = withState initialContext
 contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
 languageState = contextState . doF languageF
 
-foreign import ccall "dynamic" mkProc :: FunPtr (IO ()) -> IO ()
-foreign import ccall "dynamic" mkFunSize :: FunPtr (IO Int) -> IO Int
-foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> IO ()) -> Ptr () -> IO ()
+foreign import ccall "dynamic" mkProc :: FunPtr (Ptr() -> IO ()) -> Ptr() -> IO ()
+foreign import ccall "dynamic" mkFunSize :: FunPtr (Ptr() -> IO Int) -> Ptr() -> IO Int
+foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> Ptr() -> IO ()) -> Ptr() -> Ptr () -> IO ()
 
 getAddress arch lookup register = withRef addressRef getAddr . getAddr
   where
@@ -94,19 +96,20 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
             unsafeUseAsCStringLen code $ \(p',n) -> copyBytes p (castPtr p') n
             mprotect (castPtr p) (fromIntegral size) (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
         Noun size init -> do
-          size <- join $ evalCode mkFunSize size
+          size <- join $ evalCode mkFunSize execStub size
           ptr <- mallocForeignPtrBytes size
           register id ptr size
-          withForeignPtr ptr $ \p -> evalCode mkFunInit init >>= ($castPtr p)
+          withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init >>= ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show id) (lookupSymName id lang)
 
-evalCode :: (FunPtr f -> f) -> Code -> IO f
-evalCode wrap code = do
+evalCode :: (FunPtr (Ptr() -> a) -> (Ptr() -> a)) -> ByteString -> Code -> IO a
+evalCode wrap stub code = do
   id <- languageState $ state createSym >>= \i -> modify (setSymVal i (Verb code)) >> return i
   p <- getAddressJIT id
-  return $ wrap $ castPtrToFunPtr $ intPtrToPtr $ fromIntegral p
+  unsafeUseAsCString stub $ \stub ->
+    return $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p) 
 execCode [] = return ()
-execCode instrs = join $ evalCode mkProc (Code [] instrs (symBind (ID (-1))))
+execCode instrs = join $ evalCode mkProc execStub (Code [] instrs (symBind (ID (-1))))
 
 getAddressJIT = getAddress hostArch lookup register
   where lookup id = do

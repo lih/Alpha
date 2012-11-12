@@ -5,7 +5,7 @@ module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
                        ,Architecture(..)
                        ,Info(..)
                        ,MemState(..),Future(..), emptyFuture
-                       ,frameF, registersF) where
+                       ,frameF, registersF, fregistersF) where
 
 import Data.Bimap
 import Data.ByteString
@@ -56,5 +56,6 @@ data Info = Info {
 
 frameF = Field (frame,\f p -> p { frame = f })
 registersF = Field (registers,\r p -> p { registers = r })
+fregistersF = Field (fregisters,\r f -> f { fregisters = r })
 
 emptyFuture = Future Data.Bimap.empty

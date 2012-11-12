@@ -3,12 +3,13 @@ module My.Prelude where
 
 import System.Posix.Files
 import Data.Maybe
-import Debug.Trace
+import Debug.Trace as Tr
 import My.Control.Monad
 
+debugMess mess x = Tr.trace (mess++show x) x
 debug x = traceShow x x
 debugM = liftM debug 
-trace = Debug.Trace.trace
+trace = Tr.trace
 
 maybeToEither = maybe (Left undefined) Right
 eitherToMaybe = either (const Nothing) Just

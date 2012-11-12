@@ -4,7 +4,7 @@ module My.Control.Monad.RWTL(RWTL(..),module Data.Monoid
                             ,get,put
                             ,ask,local
                             ,tell,listen,pass,listening
-                            ,future) where
+                            ,future,withFuture) where
 
 import Data.Monoid
 import Control.Monad.State
@@ -19,14 +19,18 @@ thd4 (_,_,a,_) = a
 fth4 (_,_,_,a) = a
 
 instance Monoid w => Monad (RWTL r w p f) where
-  rw >>= cc = RWTL rw'
-    where rw' r p f = (p'',f'',b,w`mappend`w')
-            where (p',f'',a,w) = runRWTL rw r p f'
+  tl >>= cc = RWTL tl'
+    where tl' r p f = (p'',f'',b,w`mappend`w')
+            where (p',f'',a,w) = runRWTL tl r p f'
                   (p'',f',b,w') = runRWTL (cc a) r p' f
   return a = RWTL (\r p f -> (p,f,a,mempty))
+-- the Monoid constraint is not necesary if you want to be precise,
+-- but the alternative to liftM would be extremely ugly
+instance Monoid w => Functor (RWTL r w p f) where
+  fmap = liftM
 
 class MonadFuture f m | m -> f where
-  future :: (State f a) -> m a
+  future :: (StateT f m a) -> m a
 
 instance Monoid w => MonadState p (RWTL r w p f) where
   get = RWTL (\_ p f -> (p,f,p,mempty))
@@ -39,6 +43,13 @@ instance Monoid w => MonadWriter w (RWTL r w p f) where
   listen (RWTL rw) = RWTL (\r p f -> let (p',f',a,w) = rw r p f in (p',f',(a,w),w))
   pass (RWTL rw) = RWTL (\r p f -> let (p',f',(a,m),w) = rw r p f in (p',f',a,m w))
 instance Monoid w => MonadFuture f (RWTL r w p f) where
-  future st = RWTL (\r p f -> let ~(a,f') = runState st f in (p,f',a,mempty))
+  future st = RWTL (\r p f -> let (p',_,~(a,f'),w) = runRWTL (runStateT st f) r p f
+                              in (p',f',a,w))
 
 listening m = censor (const mempty) $ do (_,w) <- listen m ; return w
+withFuture m = future (do
+                          f <- get
+                          f' <- lift $ future get
+                          ret <- lift $ m f
+                          put f'
+                          return ret)
