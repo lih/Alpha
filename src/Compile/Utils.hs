@@ -11,6 +11,7 @@ import My.Data.Tree
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Function
 import Data.Maybe
 import PCode
 import Syntax  
@@ -82,13 +83,14 @@ linearize' start depG = instrs
     
     isBrPart (instr . tag . getContext -> BrPart _) = True
     isBrPart _ = False
-    instrMap = M.fromList [(n,i) | (i,(n,_)) <- zip [0..] $ concat [map (n,) (getInstr n) | n <- concat blocks]]
+    instrMap = M.fromList $ zip instrs (sums (map (length . getInstr) instrs))
+      where instrs = concat blocks
     instrs = concatMap (concatMap getInstr) blocks    
 
     getInstr (getContext -> c) = case tag c of
       ANode { instr = BrPart v } -> [Branch v $ map branch (classesBy (===) oes)]
         where branch ns = minimum $ catMaybes [M.lookup n instrMap | (n,_) <- ns]
-              (_,e) === (_,e') = e==e'
+              (===) = (==)`on`snd
       ANode { instr = Instr i } -> i : if null oes then [ret] else []
       where oes = outEdges c
 
