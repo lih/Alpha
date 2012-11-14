@@ -111,7 +111,9 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                                 , ref <- S.toList $ references i v
                                                 , s <- maybe [v] S.toList (R.lookupRan ref r)]
                     next i r (Op BCall d (_:args)) = insertManyA r assocs
-                      where assocs = map (worldID,) $ d : argRefs i args
+                      where assocs = [v | v <- d : argRefs i args
+                                        , v <- S.toList $ clobbers i v
+                                        , v <- [(v,worldID),(v,v)]]
                     next _ r _ = r
                     insertManyA r as = insertManyR r [a | (x,y) <- as, a <- [(x,y),(y,x)]]
             lookupRefs v r = fromMaybe (S.singleton worldID) $ R.lookupRan v r

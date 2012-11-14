@@ -2,7 +2,7 @@ module Specialize.Architecture(Architecture(..)
                               ,arch_x86
                               ,arch_x86_64
                               ,arch_arm
-                              ,hostArch,Specialize.Architecture.execStub,Specialize.Architecture.initStub
+                              ,hostArch,Specialize.Architecture.execStub,Specialize.Architecture.initStub,Specialize.Architecture.callStub0,Specialize.Architecture.callStub1
                               ,architectures) where
 
 import Specialize.Types
@@ -25,3 +25,5 @@ hostArch = arch_x86_64 { archName = "host" }
 
 execStub = unsafePerformIO Host.execStub
 initStub = unsafePerformIO Host.initStub
+callStub0 = unsafePerformIO . Host.callStub0
+callStub1 = unsafePerformIO . Host.callStub1

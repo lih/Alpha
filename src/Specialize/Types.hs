@@ -5,9 +5,10 @@ module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
                        ,Architecture(..)
                        ,Info(..)
                        ,MemState(..),Future(..), emptyFuture
-                       ,frameF, registersF, fregistersF) where
+                       ,frameF, registersF, changedF, fregistersF) where
 
 import Data.Bimap
+import Data.Set
 import Data.ByteString
 import Data.Map
 import Data.Relation
@@ -24,7 +25,7 @@ instance Monoid BinCode where
   mempty = BC (0,0,return mempty)
   mappend (BC ~(e,s,v)) (BC ~(e',s',v')) = BC (e+e',s+s',liftM2 (<>) v v')
 instance Show BinCode where
-  show (BC (e,a,_)) = show (e,a)
+  show (BC (e,s,_)) = show (e,s)
 
 isEmptyCode (BC (e,_,_)) = e==0
 
@@ -36,8 +37,9 @@ data Architecture = Arch {
   archCompileInstr :: Instruction -> RWTL Info BinCode MemState Future ()
   }
 data MemState = MemState {
-  registers  :: Bimap ID Register,
-  frame :: Frame
+  registers :: Bimap ID Register,
+  changed   :: Set ID,
+  frame     :: Frame
   }
           deriving Show
 data Future = Future {
@@ -54,8 +56,17 @@ data Info = Info {
   branchPos  :: (Int,Int -> (Int,Int,Maybe MemState))
   }
 
-frameF = Field (frame,\f p -> p { frame = f })
-registersF = Field (registers,\r p -> p { registers = r })
-fregistersF = Field (fregisters,\r f -> f { fregisters = r })
+instance Show Info where
+  show (Info _ b sz a c l _) = "Info { bindings = "++show b
+                               ++", sizes = "++show sz
+                               ++", actives = "++show a
+                               ++", clobbers = "++show c
+                               ++", locals = "++show l
+                               ++" }"
+
+registersF  = Field (registers  ,\r p -> p { registers = r })
+changedF    = Field (changed    ,\c p -> p { changed = c })
+frameF      = Field (frame      ,\f p -> p { frame = f })
+fregistersF = Field (fregisters ,\r f -> f { fregisters = r })
 
 emptyFuture = Future Data.Bimap.empty
