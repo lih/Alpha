@@ -89,11 +89,11 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("id"     ,Left $ Axiom XID),
   ("@"      ,Left $ Axiom XAddr),
   ("#"      ,Left $ Axiom XSize)] ++ [
-  ("addressC",Right $ exportAlpha callStub1 address_ptr),
-  ("symName" ,Right $ exportAlpha callStub1 symName_ptr),
-  ("printOK" ,Right $ exportAlpha callStub0 printOK_ptr),
-  ("printNum" ,Right $ exportAlpha callStub1 printNum_ptr),
-  ("doNothing", Right $ exportAlpha callStub0 doNothing_ptr)
+  ("addressC"  , Right $ exportAlpha callStub1 address_ptr),    
+  ("symName"   , Right $ exportAlpha callStub1 symName_ptr),    
+  ("printOK"   , Right $ exportAlpha callStub0 printOK_ptr),    
+  ("printNum"  , Right $ exportAlpha callStub1 printNum_ptr),  
+  ("doNothing" , Right $ exportAlpha callStub0 doNothing_ptr) 
   ]
 
 doTransform syn = gets transform >>= ($syn)
@@ -129,6 +129,7 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
           let (size,codem) = specialize arch (sym,getAddr) c
           ptr <- mallocForeignPtrBytes size
           register sym ptr size
+          putStrLn $ "Symbol "++show sym++" specialized at "++show ptr
           code <- codem
           withForeignPtr ptr $ \p -> do
             unsafeUseAsCStringLen code $ \(p',n) -> copyBytes p (castPtr p') n
@@ -137,6 +138,7 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
           size <- evalCode mkFunSize execStub size id
           ptr <- mallocForeignPtrBytes size
           register sym ptr size
+          putStrLn $ "Symbol "++show sym++" specialized at "++show ptr
           withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
 

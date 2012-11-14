@@ -13,7 +13,7 @@ install: all
 	cabal install
 
 find:
-	egrep -Rn 'debug' src 
+	find src -name '*.hs' | xargs sed -ri 's/!#/!/'
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

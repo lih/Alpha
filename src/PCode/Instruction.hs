@@ -10,6 +10,7 @@ import qualified Data.Set as S
 import PCode.Builtin
 import PCode.Value
 import ID
+import My.Prelude
 
 type Addr = Int
 data BindVar = BindVar { 

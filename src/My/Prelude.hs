@@ -9,6 +9,7 @@ import qualified Data.ByteString as B
 import Data.List
 import Data.Char
 import Data.Word
+import Data.Array
 
 debugMess mess x = Tr.trace (mess++show x) x
 debug x = traceShow x x
@@ -30,5 +31,8 @@ newerThan f1 f2 = liftM2 (>) (modTime f1) (modTime f2)
 
 showHex n = reverse $ map (intToDigit . fromIntegral . (`mod`16)) $ take 2 $ iterate (`div`16) (n :: Word8)
 showCode code = intercalate " " $ map showHex $ B.unpack $ code
+
+a !# i | bounds a`inRange`i = a!i
+       | otherwise = error $ "undefined index "++show i++" in array "
 
 

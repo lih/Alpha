@@ -36,7 +36,7 @@ simplify start = do
   return $ concatMap (newStart oldDep newDep) start
   where 
     purgeAll = do
-      mapM_ (purgeNode isNoop) =<< getNodeList         
+      mapM_ (purgeNode isNoop) =<< getNodeList
       mapM_ (purgeNode isEmptyBranch) =<< getNodeList
     purgeNode p n = do
       c <- getContext n              
@@ -56,17 +56,15 @@ simplify start = do
         mergeEdge (BranchAlt t x) (BranchAlt t' _) = BranchAlt (least t t') x
         mergeEdge TimeDep         b                = b
         mergeEdge e               t                = mergeEdge t e
-      sequence_ [createEdge (mergeEdge t t')  n  n'' | (n  ,t) <- lies, (n'',t') <- loes ]
       sequence_ [deleteEdge                   n  n'  | (n  ,_) <- lies                   ]
       sequence_ [deleteEdge                   n' n'' | (n'',_) <- loes                   ]
+      sequence_ [createEdge (mergeEdge t t')  n  n'' | (n  ,t) <- lies, (n'',t') <- loes ]
       deleteNode n'
     newStart old new = newStart
       where 
-        newStart n = 
-          maybe (maybe [] (\c -> concat [newStart n | (n,_) <- outEdges c])
-                 (lookupContext n old)) 
-          (const [n])
-          (lookupContext n new)
+        newStart n = fromJust $ (lookupContext n new >> return [n])
+                     `mplus` (lookupContext n old >§ \c -> concat [newStart n | (n,_) <- outEdges c])
+                     `mplus` return []
 
 data ANode = ANode {
   weight :: Int,
@@ -80,6 +78,7 @@ linearize' start depG = instrs
     aG = annotate depG
     getContext n = G.getContext n aG
     withContext n = (n,getContext n)
+    (<#) = ((<) `on` (weight . tag))
     
     isBrPart (instr . tag . getContext -> BrPart _) = True
     isBrPart _ = False
@@ -99,14 +98,17 @@ linearize' start depG = instrs
     heads = startHeads : deleteBy headsEq startHeads heads
       where eq n1 n2 = if n1`elem`start then n2`elem`start else c'
               where c' = n2 `elem` [n | (n,e') <- outEdges $ getContext prev, e==e']
-                    (prev,e) = fromMaybe (error $ "Couldn't find edge of "++show n1++" in graph "++show aG) $ find isBackEdge $ inEdges $ getContext n1
+                    (prev,e) = fromMaybe (error $ "Couldn't find edge of "++show n1++" in graph "++show aG)
+                               $ find isBackEdge $ inEdges $ getContext n1
             headsEq a b = sort a==sort b
             heads = classesBy eq $ selectHeads $ nodeListFull aG
-    tails = map (nub . concatMap saturate) heads
+    tails = map (S.toList . S.unions) $ classesBy share $ map (S.fromList . concatMap saturate) heads
+      where share s s' = not $ S.null (s `S.intersection` s')
     saturate n = if null nexts then [n] else concatMap saturate nexts
       where nexts = [n' | let c = getContext n                                
                         , (n',c') <- map withContext $ nextNodes c
-                        , weight (tag c') > weight (tag c)]
+                        , c <# c']
+
     
     blocks = map blockFromTails tails
     blockFromTails tails = evalState (concat $< mapM makeBlock tails) S.empty
@@ -117,10 +119,10 @@ linearize' start depG = instrs
           prevs <- mapM makeBlock (getPrevs n)
           visit n
           return $ concat prevs ++ [n]
-        getPrevs n = map fst $ sortBy cmp $ filter p $ map withContext $ prevNodes language
-          where cmp (_,c) (_,c') = compare (erNum $ tag c') (erNum $ tag c)
-                p (_,c) = weight (tag c) < weight (tag language)
-                language = getContext n
+        getPrevs n = map fst $ sortBy cmp $ filter p $ map withContext $ prevNodes ctx
+          where cmp = compare `on` (erNum . tag . snd)
+                p (_,c) = c <# ctx
+                ctx = getContext n
 
 annotate depG = newdepG
   where 
