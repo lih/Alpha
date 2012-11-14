@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
                        ,module PCode, module ID,module Specialize.Frame
-                       ,Register(..),BinCode(..), isEmptyCode
+                       ,Register(..),BinCode(..), isEmptyCode, binCodeData
                        ,Architecture(..)
                        ,Info(..)
                        ,MemState(..),Future(..), emptyFuture
@@ -28,6 +28,7 @@ instance Show BinCode where
   show (BC (e,s,_)) = show (e,s)
 
 isEmptyCode (BC (e,_,_)) = e==0
+binCodeData (BC (_,_,b)) = b
 
 type Register = Int
 data Architecture = Arch {

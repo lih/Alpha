@@ -30,7 +30,7 @@ fis          :: (Integral a,Num b) => [a] -> [b]
 bytes        :: (Bits a,Integral a,Num b) => a -> [b]
 defSize      :: Num a => a
 argBytesWide :: Bool -> Int -> Int -> (Maybe Integer) -> ([Word8],[Word8])
-codeFun      :: [(Int,(Word8,Int))] -> (Int,IO Integer) -> Maybe (Word8,Int,Int,IO [Word8])
+codeFun      :: [(Int,(Word8,Int,Int))] -> (Int,IO Integer) -> Maybe (Word8,Int,Int,IO [Word8])
 
 arch_x86_64 = Arch "x86_64" defSize defaults compile
 (execStub,initStub, callStub0, callStub1) = (writerStub exec,writerStub init,
@@ -71,7 +71,12 @@ a <|||> b = runKleisli (k a ||| k b)
 leftK f = runKleisli (left $ k f)
 
 bSize (bindSize -> (n,nr)) = n+nr*defSize
-numSize n = length $ takeWhile (>0) $ iterate (`shiftR`8) n
+numSize n | n>=0 = numSize 64 n
+          | otherwise = 1+numSize 64 (-n)
+  where numSize 0 _ = 1
+        numSize bl n = case reverse $ takeWhile (>0) $ iterate (`shiftR`bl) n of
+          [] -> 0
+          (x:t) -> (length t)*bl + numSize (bl`div`2) x
 withSize n = (numSize n,return $ fi n)
 fromFields fs = foldl1 xor (zipWith shiftL (map (fst) fs) (scanl (+) 0 $ map snd fs))
 bytes = fis . iterate (`shiftR`8)
@@ -101,7 +106,7 @@ opi codes def d a n = case codes n of
     where (pre,suf) = argBytes r d Nothing
           pref = pre++[code]++suf
   Nothing -> movi r15 n >> op def d a r15
-codeFun codes (size,n) = listToMaybe [(code,r,s,imm s) | (s,(code,r)) <- codes, s>=size]
+codeFun codes (size,n) = listToMaybe [(code,r,count,imm count) | (s,(code,count,r)) <- codes, s>=size]
   where imm s = liftM (take s . bytes) n
                       
 mov d s | d==s = return ()
@@ -109,7 +114,7 @@ mov d s | d==s = return ()
   where (pre,suf) = argBytes d s Nothing
 movi d (0,_) = bwxorrr d d d
 movi d n = tell $ fromBytesN (length pref+s) (liftM (pref++) imm)
-  where (code,r,s,imm) = fromJust $ codeFun [(4,(0xC7,0)),(8,(0xB8`xor`(fi d.&.7),0))] n
+  where (code,r,s,imm) = fromJust $ codeFun [(31,(0xC7,4,0)),(64,(0xB8`xor`(fi d.&.7),8,0))] n
         (pre,suf) | code==0xC7 = argBytes 0 d Nothing
                   | otherwise = (fst $ argBytes d 0 Nothing,[])
         pref = pre++[code]++suf
@@ -121,10 +126,10 @@ zxtnd r | r>=4 && r<8 = mov r15 r >> zxtnd r15 >> mov r r15
 setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r
   where (pre,post) = argBytesWide False 0 r Nothing
 
-shli = opi (codeFun [(1,(0xC1,4))]) undefined
-shri = opi (codeFun [(1,(0xC1,5))]) undefined
+shli = opi (codeFun [(8,(0xC1,1,4))]) undefined
+shri = opi (codeFun [(8,(0xC1,1,5))]) undefined
 rori d s n | n==0||n==64 = return ()
-           | otherwise = opi (codeFun [(1,(0xC1,1))]) undefined d s (withSize n)
+           | otherwise = opi (codeFun [(8,(0xC1,1,1))]) undefined d s (withSize n)
 ld d (_,_,0) = return ()
 ld d (s,n,size) = load
   where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
@@ -169,23 +174,23 @@ commOp c c' = (op c,opn,flip . opn)
 
 addri d r (0,_) = return ()
 addri d r v = addri' d r v
-(addrr,addri',addir)      = commOp [0x03] [(1,(0x83,0)),(4,(0x81,0))]
-(mulrr,mulri,mulir)       = commOp [0x0F,0xAF] [(1,(0x6B,0)),(8,(0x69,0))]
-(bwandrr,bwandri,bwandir) = commOp [0x23]      [(1,(0x83,4)),(4,(0x81,4))]
-(bworrr,bworri,bworir)    = commOp [0x0b]      [(1,(0x83,1)),(4,(0x81,1))]
-(bwxorrr,bwxorri,bwxorir) = commOp [0x33]      [(1,(0x83,6)),(4,(0x81,6))]
+(addrr,addri',addir)      = commOp [0x03]      [(8,(0x83,1,0)),(32,(0x81,4,0))]
+(mulrr,mulri,mulir)       = commOp [0x0F,0xAF] [(8,(0x6B,1,0)),(64,(0x69,8,0))]
+(bwandrr,bwandri,bwandir) = commOp [0x23]      [(7,(0x83,1,4)),(31,(0x81,4,4))]
+(bworrr,bworri,bworir)    = commOp [0x0b]      [(7,(0x83,1,1)),(31,(0x81,4,1))]
+(bwxorrr,bwxorri,bwxorir) = commOp [0x33]      [(7,(0x83,1,6)),(31,(0x81,4,6))]
 neg r = tellCode $ pre++[0xf7]++post
   where (pre,post) = argBytes 3 r Nothing
 subrr d a b | d==b = op [0x2b] d d a >> neg d
             | otherwise = op [0x2b] d a b
 subri d r (0,_) = return ()
-subri d r v = opi (codeFun [(1,(0x83,5)),(4,(0x81,5))]) [0x2b] d r v
+subri d r v = opi (codeFun [(8,(0x83,1,5)),(32,(0x81,4,5))]) [0x2b] d r v
 subir d n a | d==a = subri d d n >> neg d
             | otherwise = movi d n >> subrr d d a
 
 cmprr _ a b = op [0x3b] a a b
 cmpri _ a = opi (codeFun codes) [0x3b] a a
-  where codes = [(1,(0x83,7)),(4,(0x81,7))]
+  where codes = [(8,(0x83,1,7)),(32,(0x81,4,7))]
 cmpir _ n a = movi r15 n >> cmprr r15 r15 a
 
 calli pos (size,v) = tell $ fromBytesN 5 $ do
@@ -204,7 +209,7 @@ opsCode (rr,ri,ir,ii) dest v v' = case (v,v') of
 argVal (IntVal n) = Right $ withSize n
 argVal (SymVal Size s) = Right $ withSize $ fromMaybe defSize $ M.lookup s (sizes ?info)
 argVal (SymVal SymID (ID s)) = Right $ withSize $ s
-argVal (SymVal _ s) = maybe (Left s) (Right . (defSize,)) $ globVal s
+argVal (SymVal _ s) = maybe (Left s) (Right . (defSize*8,)) $ globVal s
 globVal s = if isLocal s then Nothing else Just (toInteger $< snd (envInfo ?info) s)
 isLocal s = S.member s (locals ?info)
 binding s = M.lookup s (bindings ?info)

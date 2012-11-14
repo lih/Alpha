@@ -59,7 +59,6 @@ foreign import ccall "&symName_" symName_ptr :: FunPtr (ID -> IO (Ptr Word8))
 symName_ sym = do
   n <- gets (lookupSymName sym . language)
   ret <- newArray0 0 (map c2w $ fromMaybe "" n)
-  Prelude.putStrLn $ "symName: sym="++show sym++", ret="++show ret
   return ret
 
 foreign export ccall "printOK_" printOK_ :: IO ()
@@ -129,7 +128,6 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
           let (size,codem) = specialize arch (sym,getAddr) c
           ptr <- mallocForeignPtrBytes size
           register sym ptr size
-          putStrLn $ "Symbol "++show sym++" specialized at "++show ptr
           code <- codem
           withForeignPtr ptr $ \p -> do
             unsafeUseAsCStringLen code $ \(p',n) -> copyBytes p (castPtr p') n
@@ -138,7 +136,6 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
           size <- evalCode mkFunSize execStub size id
           ptr <- mallocForeignPtrBytes size
           register sym ptr size
-          putStrLn $ "Symbol "++show sym++" specialized at "++show ptr
           withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
 
