@@ -72,7 +72,7 @@ leftK f = runKleisli (left $ k f)
 
 bSize (bindSize -> (n,nr)) = n+nr*defSize
 numSize n | n>=0 = numSize 64 n
-          | otherwise = 1+numSize 64 (-n)
+          | otherwise = 1+numSize 64 (-1-n)
   where numSize 0 _ = 1
         numSize bl n = case reverse $ takeWhile (>0) $ iterate (`shiftR`bl) n of
           [] -> 0
@@ -120,14 +120,26 @@ movi d n = tell $ fromBytesN (length pref+s) (liftM (pref++) imm)
         pref = pre++[code]++suf
 lea d s n = tellCode $ pre++[0x8d]++post
   where (pre,post) = argBytes d s (Just n)
-zxtnd r | r>=4 && r<8 = mov rsi r >> zxtnd rsi >> mov r rsi
-        | otherwise = tellCode $ pre++[0x0f,0xb6]++post
+zxtnd r s = case (s :: Int) of
+  1 -> tellCode (pre++[0x0f,0xb6]++post)
+  2 -> tellCode (pre++[0x0f,0xb7]++post)
+  _ -> shli r r sz >> shri r r sz
+    where sz = withSize $ 8*(defSize-s)
   where (pre,post) = argBytes r r Nothing
-setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r
+sxtnd r s = case (s :: Int) of
+  1 -> tellCode (pre++[0x0f,0xbe]++post)
+  2 -> tellCode (pre++[0x0f,0xbf]++post)
+  4 -> tellCode (pre++[0x63]++post)
+  _ -> shli r r sz >> sari r r sz
+    where sz = withSize $ 8*(defSize-s)
+  where (pre,post) = argBytes r r Nothing
+  
+setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r 1
   where (pre,post) = argBytesWide False 0 r Nothing
 
 shli = opi (codeFun [(8,(0xC1,1,4))]) undefined
 shri = opi (codeFun [(8,(0xC1,1,5))]) undefined
+sari = opi (codeFun [(8,(0xC1,1,7))]) undefined
 rori d s n | n==0||n==64 = return ()
            | otherwise = opi (codeFun [(8,(0xC1,1,1))]) undefined d s (withSize n)
 ld d (_,_,0) = return ()
@@ -220,7 +232,7 @@ stackAddr sz = liftM (frameToStack sz) . frameAddr
 frameToStack sz n = -(n+sz)
 lookupSymIn = flip BM.lookupR
 lookupRegIn = flip BM.lookup
-argValSym (SymVal Value s) = Just s
+argValSym (SymVal Value s) | isLocal s = Just s
 argValSym _ = Nothing
 lookupArgReg arg m = argValSym arg >>= lookupRegIn m
 
@@ -459,13 +471,17 @@ compileOp BCall d (fun:args) = withFreeSet $ do
     addri rsp rsp $ withSize top
     lift $ associate rax (Just d)
 
-compileOp BSet d [s] = withFreeSet $ do
+compileOp b d [s] | b`elem`[BSet,BSetSX] && varSize d<=defSize = withFreeSet $ do
   [v] <- loadArgs [(s,Nothing)]
   readFuture $ do
     let dest r = maybe (destRegister d) (const $ return r) $ mfilter (not . isActive) $ argValSym s
     r' <- dest $ (id ||| const 0) v 
     (mov r' <|||> movi r') v
+    when (argSize s < varSize d) $ case b of
+      BSet -> zxtnd r' (argSize s)
+      BSetSX -> sxtnd r' (argSize s)
     lift $ associate r' (Just d)
+
 compileOp b d [a,a'] | b`elem`[BAdd,BSub,BMul,BAnd,BOr,BXor] = withFreeSet $ do
   let ops = fromJust $ lookup b [(BAdd,(addrr,addri,addir,(+)))
                                 ,(BSub,(subrr,subri,subir,(-)))
