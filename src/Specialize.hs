@@ -92,9 +92,9 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                     fun i a = (addActives (instr i) out,out)
                       where out = S.unions (map ((a!) >>> fst) (nexts i))
                             addActives (Op _ v vs) s = (s S.\\ clobbers i v)
-                                                       <> S.unions [clobbers i s' | SymVal Value s <- vs
-                                                                                  , s' <- s:maybeToList (root i s)]
-                                                       <> S.fromList (catMaybes [root i s | SymVal Address s <- SymVal Address v:vs])
+                                                       <> S.unions [clobbers i s | SymVal Value s <- vs]
+                                                       <> S.fromList (catMaybes [root i s | SymVal t s <- SymVal Address v:vs
+                                                                                          , t==Value || t==Address])
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id 
                             addActives (Bind _ v) s = maybe id S.insert v s
                             addActives _ s = s
@@ -107,13 +107,14 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
               where next i r (Bind bv v) = insertManyA r assocs
                       where assocs = [(bindSym bv,s) | bv <- bindNodes bv
                                                      , s <- bindSyms bv]
-                                     ++[(s,ref) | v <- maybeToList v
-                                                , ref <- S.toList $ references i v
-                                                , s <- maybe [v] S.toList (R.lookupRan ref r)]
+                                     ++[(s,s') | v <- maybeToList v
+                                               , ref <- S.toList $ references i v
+                                               , s <- S.toList $ clobbers i ref
+                                               , s' <- bindSyms bv]
                     next i r (Op BCall d (_:args)) = insertManyA r assocs
-                      where assocs = [v | v <- d : argRefs i args
-                                        , v <- S.toList $ clobbers i v
-                                        , v <- [(v,worldID),(v,v)]]
+                      where assocs = [a | ref <- d : argRefs i args
+                                        , v <- S.toList $ clobbers i ref
+                                        , a <- [(v,worldID),(v,v)]]
                     next _ r _ = r
                     insertManyA r as = insertManyR r [a | (x,y) <- as, a <- [(x,y),(y,x)]]
             lookupRefs v r = fromMaybe (S.singleton worldID) $ R.lookupRan v r

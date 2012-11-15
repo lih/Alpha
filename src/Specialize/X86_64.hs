@@ -320,16 +320,15 @@ loadArgs args = do
     allocs <- mapM argNew alls
     let assocs = filter (\(r,arg,_) -> not $ (myWorkIsDone r ||| const False) (argVal arg))
                  $ lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
-        bind (SymVal _ s) | isLocal s = binding s
-        bind _ = Nothing
+        bind arg = argValSym arg >>= binding
         groups = classesBy ((==)`on`parent) assocs
         parent (_,_,b) = fmap fst b
-        myWorkIsDone r s = lookupRegIn regs s == Just r
+        myWorkIsDone r s = BM.pairMember (s,r) regs
         loadGroup g = do
           base <- loadRoot (parent $ head g)
           mapM_ (load base) g
           where load base (r,arg,b) = lift regInfo >>= \(regs,_) -> do
-                  when (isJust $ lookupSymIn regs r) (storeRegs [r])
+                  when (BM.memberR r regs) (storeRegs [r])
                   lift $ case argVal arg of
                     Right v -> movi r v
                     Left s -> case lookupRegIn regs s of
