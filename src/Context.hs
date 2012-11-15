@@ -61,6 +61,10 @@ symName_ sym = do
   ret <- newArray0 0 (map c2w $ fromMaybe "" n)
   return ret
 
+foreign export ccall "allocate_" allocate_ :: Int -> IO (Ptr ())
+foreign import ccall "&allocate_" allocate_ptr :: FunPtr (Int -> IO (Ptr ()))
+allocate_ = mallocBytes
+
 foreign export ccall "printOK_" printOK_ :: IO ()
 foreign import ccall "&printOK_" printOK_ptr :: FunPtr (IO ())
 printOK_ = Prelude.putStrLn "OK"
@@ -68,9 +72,7 @@ foreign export ccall "printNum_" printNum_ :: Int -> IO ()
 foreign import ccall "&printNum_" printNum_ptr :: FunPtr (Int -> IO ())
 printNum_ n = print (intPtrToPtr $ fromIntegral n)
 
-foreign export ccall "doNothing_" doNothing_ :: IO ()
-foreign import ccall "&doNothing_" doNothing_ptr :: FunPtr (IO ())
-doNothing_ = doNothing
+
 
 initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alter"  ,Left $ Axiom XAlter),
@@ -88,11 +90,11 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("id"     ,Left $ Axiom XID),
   ("@"      ,Left $ Axiom XAddr),
   ("#"      ,Left $ Axiom XSize)] ++ [
-  ("addressC"  , Right $ exportAlpha callStub1 address_ptr),    
-  ("symName"   , Right $ exportAlpha callStub1 symName_ptr),    
-  ("printOK"   , Right $ exportAlpha callStub0 printOK_ptr),    
-  ("printNum"  , Right $ exportAlpha callStub1 printNum_ptr),  
-  ("doNothing" , Right $ exportAlpha callStub0 doNothing_ptr) 
+  ("alpha/c@"          , Right $ exportAlpha callStub1 address_ptr),    
+  ("alpha/symbol-name" , Right $ exportAlpha callStub1 symName_ptr),    
+  ("alpha/allocate"    , Right $ exportAlpha callStub1 allocate_ptr), 
+  ("alpha/print-OK"    , Right $ exportAlpha callStub0 printOK_ptr),    
+  ("alpha/print-num"   , Right $ exportAlpha callStub1 printNum_ptr)  
   ]
 
 doTransform syn = gets transform >>= ($syn)

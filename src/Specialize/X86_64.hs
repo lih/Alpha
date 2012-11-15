@@ -59,9 +59,9 @@ arch_x86_64 = Arch "x86_64" defSize defaults compile
 
 defSize = 8
 ([rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8,r9,r10,r11,r12,r13,r14,r15],allocRegs) =
-  (regs,filter (not . (`elem`[rsp,r14,r15])) regs)
+  (regs,filter isAllocReg regs)
   where regs = [0..15] :: [Int]
-isAllocReg r = r>=rax && r<r14 && r/=rsp 
+isAllocReg r = (r>=rax && r<rsp) || (r>rdi && r<=r15)
 oppFlags f = fromJust $ lookup f $ fls++map swap fls
   where fls = [(0xf,0xc),(0x4,0x5),(0xd,0xe)]
 
@@ -105,7 +105,7 @@ opi codes def d a n = case codes n of
   Just (code,r,s',imm) -> mov d a >> tell (fromBytesN (length pref+s') (liftM (pref++) imm))
     where (pre,suf) = argBytes r d Nothing
           pref = pre++[code]++suf
-  Nothing -> movi r15 n >> op def d a r15
+  Nothing -> movi rsi n >> op def d a rsi
 codeFun codes (size,n) = listToMaybe [(code,r,count,imm count) | (s,(code,count,r)) <- codes, s>=size]
   where imm s = liftM (take s . bytes) n
                       
@@ -120,7 +120,7 @@ movi d n = tell $ fromBytesN (length pref+s) (liftM (pref++) imm)
         pref = pre++[code]++suf
 lea d s n = tellCode $ pre++[0x8d]++post
   where (pre,post) = argBytes d s (Just n)
-zxtnd r | r>=4 && r<8 = mov r15 r >> zxtnd r15 >> mov r r15
+zxtnd r | r>=4 && r<8 = mov rsi r >> zxtnd rsi >> mov r rsi
         | otherwise = tellCode $ pre++[0x0f,0xb6]++post
   where (pre,post) = argBytes r r Nothing
 setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r
@@ -137,11 +137,7 @@ ld d (s,n,size) = load
                   where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
                           where m = s-((n+i)`mod`s)
         load = sequence_ $ zipWith ldChunk (reverse $ zip (sums szs) szs) (True:repeat False)
-        ldChunk (i,sz) fst = do
-          sh sz
-          if sz==1 && d>=4 && d<8
-            then (if fst then return () else mov r15 d) >> ld r15 (s,n+i,1) >> mov d r15
-            else tellCode $ pre'++pre++code++suf
+        ldChunk (i,sz) fst = sh sz >> tellCode (pre'++pre++code++suf)
           where (pre,suf) = argBytesWide (sz==8) d s (Just (n+i))
                 (pre',code) = fromJust (lookup sz [(8,([],[0x8b]))
                                                   ,(4,([],[0x8b]))
@@ -156,11 +152,7 @@ st (d,n,size) s = store
                   where f s i = fromJust $ findIndex (\p -> m.&.p==0) $ iterate (`shiftR`1) s
                           where m = s-((n+i)`mod`s)
         store = sequence_ $ reverse [stChunk a b | (a,b) <- zip (reverse $ zip (sums szs) szs) (True:repeat False)]
-        stChunk (i,sz) lst = do
-          (if sz==1 && s>=4 && s<8
-            then mov r15 s >> st (d,n+i,1) r15
-            else tellCode $ pre'++pre++code++suf)
-          sh sz
+        stChunk (i,sz) lst = tellCode (pre'++pre++code++suf) >> sh sz
           where (pre,suf) = argBytesWide (sz==8) s d (Just (n+i))
                 (pre',code) = fromJust (lookup sz [(8,([],[0x89]))
                                                   ,(4,([],[0x89]))
@@ -191,7 +183,7 @@ subir d n a | d==a = subri d d n >> neg d
 cmprr _ a b = op [0x3b] a a b
 cmpri _ a = opi (codeFun codes) [0x3b] a a
   where codes = [(8,(0x83,1,7)),(32,(0x81,4,7))]
-cmpir _ n a = movi r15 n >> cmprr r15 r15 a
+cmpir _ n a = movi rsi n >> cmprr rsi rsi a
 
 calli pos (size,v) = tell $ fromBytesN 5 $ do
   pos <- pos ; v <- v
@@ -256,7 +248,7 @@ regInfo = liftM2 (,) (gets registers) (asks (fregisters . snd))
 
 allocReg sym = lift regInfo >>= \(_,regs) -> do
   let st free = (r,SB.delete r free)
-        where r | SB.null free = r14
+        where r | SB.null free = rdi
                 | otherwise = fromMaybe (SB.findMin free) $ mfilter (`SB.member`free)
                                                                      $ lookupRegIn regs sym
   state st
@@ -439,14 +431,14 @@ compileOp BCall d (fun:args) = withFreeSet $ do
       storeBig top (id,arg) = case lookupAddr id subFrame of
         Just addr -> case argVal arg of
           Left s -> do
-            let loadAddr (r,n) = do a <- stackAddr defSize r ; ld r14 (rsp,fi a,defSize) ; return (r14,n)
+            let loadAddr (r,n) = do a <- stackAddr defSize r ; ld rdi (rsp,fi a,defSize) ; return (rdi,n)
             (base,n) <- maybe ((rsp,) $< stackAddr size s) loadAddr $ binding s
             let addrs = [0,defSize..size]
             sequence_ [ld rax (base,fi $ n+a,fi sz)
                        >> st (rsp,fi $ frameToStack size (top+defSize+addr)+a,fi sz) rax
                       | a <- addrs, let sz = min defSize (size-a)]
             
-          Right v -> movi r14 v >> st (rsp,fi $ frameToStack defSize $ top+defSize+addr,defSize) r14
+          Right v -> movi rdi v >> st (rsp,fi $ frameToStack defSize $ top+defSize+addr,defSize) rdi
           where size = argSize arg
         Nothing -> return ()
 
