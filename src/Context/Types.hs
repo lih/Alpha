@@ -1,6 +1,7 @@
 module Context.Types where
 
 import Foreign.ForeignPtr
+import Foreign.Ptr
 import Data.Word
 import Data.Bimap
 import Data.Map
@@ -41,7 +42,7 @@ data Context = C {
   jitAddresses  :: Map ID (ForeignPtr Word8),
   compAddresses :: Map ID (Int,ForeignPtr Word8),
   compTop       :: Int,
-  transform     :: Syntax ID -> IO (Syntax ID)
+  transform     :: Maybe (Ptr ())
   }
 jitAddressesF  = Field (jitAddresses,\a c -> c { jitAddresses = a })
 compAddressesF = Field (compAddresses,\a c -> c { compAddresses = a })

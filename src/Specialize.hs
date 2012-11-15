@@ -96,7 +96,7 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                                        <> S.fromList (catMaybes [root i s | SymVal t s <- SymVal Address v:vs
                                                                                           , t==Value || t==Address])
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id 
-                            addActives (Bind _ v) s = maybe id S.insert v s
+                            addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
             localsA = treeArray next (S.fromList [v | bv <- retVar:args, v <- bindSyms bv])
               where next _ s (Bind bv _) = s `S.union` S.fromList (bindSyms bv)

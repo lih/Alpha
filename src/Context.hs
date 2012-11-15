@@ -11,7 +11,7 @@ import Bindings.Posix.Sys.Mman
 import Context.Language as Lang
 import Context.Language
 import Context.Types
-import Data.ByteString hiding (map,putStrLn)
+import qualified Data.ByteString as B
 import Data.ByteString.Unsafe
 import Data.ByteString.Internal
 import Data.Functor.Identity
@@ -34,14 +34,19 @@ import My.Prelude
 
 foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
 
-withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
+foreign import ccall "dynamic" mkProc :: FunPtr (Ptr() -> IO ()) -> Ptr() -> IO ()
+foreign import ccall "dynamic" mkFunSize :: FunPtr (Ptr() -> IO Int) -> Ptr() -> IO Int
+foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> Ptr() -> IO ()) -> Ptr() -> Ptr () -> IO ()
+foreign import ccall "dynamic" mkFunTransform :: FunPtr (Ptr () -> Ptr() -> IO (Ptr ())) -> Ptr() -> Ptr () -> IO (Ptr ())
 
+withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
+funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
+
+addressRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 contextRef = unsafePerformIO $ newIORef (undefined :: Context)
 instance MonadState Context IO where
   get = readIORef contextRef
   put = writeIORef contextRef
-
-funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
 
 exportAlpha stub ptr = unsafePerformIO $ do
   unsafeUseAsCStringLen (stub $ funPtrToInteger ptr) $ \(src,size) -> do
@@ -51,7 +56,6 @@ exportAlpha stub ptr = unsafePerformIO $ do
 
 foreign export ccall "address_" address_ :: ID -> IO Int
 foreign import ccall "&address_" address_ptr :: FunPtr (ID -> IO Int)
-addressRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 address_ id = readIORef addressRef >>= ($id)
 
 foreign export ccall "symName_" symName_ :: ID -> IO (Ptr Word8)
@@ -72,6 +76,10 @@ foreign export ccall "printNum_" printNum_ :: Int -> IO ()
 foreign import ccall "&printNum_" printNum_ptr :: FunPtr (Int -> IO ())
 printNum_ n = print (intPtrToPtr $ fromIntegral n)
 
+foreign export ccall "setTransform_" setTransform_ :: Ptr () -> IO ()
+foreign import ccall "&setTransform_" setTransform_ptr :: FunPtr (Ptr () -> IO ())
+setTransform_ fun = modify $ \c -> c { transform = Just fun }
+
 initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alter"  ,Left $ Axiom XAlter),
   ("bind"   ,Left $ Axiom XBind),
@@ -88,16 +96,45 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("id"     ,Left $ Axiom XID),
   ("@"      ,Left $ Axiom XAddr),
   ("#"      ,Left $ Axiom XSize)] ++ [
-  ("alpha/c@"          , Right $ exportAlpha callStub1 address_ptr),    
-  ("alpha/symbol-name" , Right $ exportAlpha callStub1 symName_ptr),    
-  ("alpha/allocate"    , Right $ exportAlpha callStub1 allocate_ptr), 
-  ("alpha/print-OK"    , Right $ exportAlpha callStub0 printOK_ptr),    
-  ("alpha/print-num"   , Right $ exportAlpha callStub1 printNum_ptr)  
+
+  ("alpha/c@"            , Right $ exportAlpha callStub1 address_ptr),    
+  ("alpha/symbol-name"   , Right $ exportAlpha callStub1 symName_ptr),
+  ("alpha/set-transform" , Right $ exportAlpha callStub1 setTransform_ptr),    
+  ("alpha/allocate"      , Right $ exportAlpha callStub1 allocate_ptr), 
+  ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
+  ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
   ]
 
-doTransform syn = gets transform >>= ($syn)
-
-initialContext = C lang jitA M.empty (fromIntegral entryAddress) return
+doTransform syn = gets transform >>= ($syn) . maybe return tr 
+  where tr fun tree = do
+          root <- allocTree tree
+          new <- unsafeUseAsCString initStub $ \stub -> mkFunTransform (castPtrToFunPtr stub) fun root
+          readTree new
+        intS = sizeOf (undefined::Int) ; ptrS = sizeOf (undefined::Ptr())
+        pok e p = poke (castPtr p) e >> return (p`plusPtr`sizeOf e)
+        pik p = peek (castPtr p) >>= \e -> return (e,p`plusPtr`sizeOf e)
+        allocTree (Group g) = do
+          p <- mallocBytes (intS+intS+(length g*ptrS))
+          p' <- pok (0::Int) p
+          p'' <- pok (length g) p'
+          mapM allocTree g >>= \l -> pokeArray (castPtr p'') l
+          return p
+        allocTree (Symbol (ID s)) = do
+          p <- mallocBytes (intS+intS)
+          p' <- pok (1::Int) p
+          pok s p'
+          return p
+        readTree p = do
+          (t,p') <- pik p
+          case t :: Int of
+            0 -> do
+              (s,p'') <- pik p'
+              l <- peekArray s p''
+              liftM Group $ mapM readTree l
+            1 -> do
+              liftM (Symbol . ID) $ peek p'
+              
+initialContext = C lang jitA M.empty (fromIntegral entryAddress) Nothing
   where (lang,jitA) = execState (mapM_ st initialBindings) (Lang.empty,M.empty)
           where st (s,v) = do
                   i <- stateF fstF (internSym s)
@@ -110,15 +147,19 @@ withDefaultContext = withState initialContext
 contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
 languageState = contextState . doF languageF
 
-foreign import ccall "dynamic" mkProc :: FunPtr (Ptr() -> IO ()) -> Ptr() -> IO ()
-foreign import ccall "dynamic" mkFunSize :: FunPtr (Ptr() -> IO Int) -> Ptr() -> IO Int
-foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> Ptr() -> IO ()) -> Ptr() -> Ptr () -> IO ()
-
 pageSize = fromIntegral $ unsafePerformIO $ c'sysconf c'_SC_PAGESIZE
 enableExec p size = do
   let p' = alignPtr (p`plusPtr`(1-pageSize)) pageSize
   mprotect (castPtr p') (fromIntegral $ size+ p`minusPtr`p') (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
   
+evalCode :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> Code -> (a -> IO b) -> IO b
+evalCode wrap stub code f = do
+  id <- languageState $ state createSym >>= \i -> modify (setSymVal i (Verb code)) >> return i
+  p <- getAddressJIT id
+  unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p) 
+execCode [] = return ()
+execCode instrs = evalCode mkProc execStub (Code [] instrs (symBind (ID (-1)))) id
+
 getAddress arch lookup register = withRef addressRef getAddr . getAddr
   where
     getAddr sym = lookup sym >>= \val -> case val of
@@ -138,14 +179,6 @@ getAddress arch lookup register = withRef addressRef getAddr . getAddr
           register sym ptr size
           withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
-
-evalCode :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> Code -> (a -> IO b) -> IO b
-evalCode wrap stub code f = do
-  id <- languageState $ state createSym >>= \i -> modify (setSymVal i (Verb code)) >> return i
-  p <- getAddressJIT id
-  unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p) 
-execCode [] = return ()
-execCode instrs = evalCode mkProc execStub (Code [] instrs (symBind (ID (-1)))) id
 
 getAddressJIT = getAddress hostArch lookup register
   where lookup id = do
