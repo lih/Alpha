@@ -1,5 +1,5 @@
 name:           alpha
-version:        0.99
+version:        0.995
 synopsis:       A compiler for the Alpha language
 description:    Alpha is a programming language that aims at being very simple and 
                 low-level, so as to be efficient, while at the same time
