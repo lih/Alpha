@@ -54,6 +54,10 @@ exportAlpha stub ptr = unsafePerformIO $ do
     withForeignPtr ptr $ \dst -> copyBytes (castPtr dst) src size
     return ptr
 
+foreign export ccall "setTransform_" setTransform_ :: Ptr () -> IO ()
+foreign import ccall "&setTransform_" setTransform_ptr :: FunPtr (Ptr () -> IO ())
+setTransform_ fun = modify $ \c -> c { transform = Just fun }
+
 foreign export ccall "address_" address_ :: ID -> IO Int
 foreign import ccall "&address_" address_ptr :: FunPtr (ID -> IO Int)
 address_ id = readIORef addressRef >>= ($id)
@@ -65,6 +69,12 @@ symName_ sym = do
   ret <- newArray0 0 (map c2w $ fromMaybe "" n)
   return ret
 
+foreign export ccall "nameSym_" nameSym_ :: Ptr Word8 -> IO ID
+foreign import ccall "&nameSym_" nameSym_ptr :: FunPtr (Ptr Word8 -> IO ID)
+nameSym_ p = do
+  l <- peekArray0 0 p
+  stateF languageF (internSym $ map w2c l)
+  
 foreign export ccall "allocate_" allocate_ :: Int -> IO (Ptr ())
 foreign import ccall "&allocate_" allocate_ptr :: FunPtr (Int -> IO (Ptr ()))
 allocate_ = mallocBytes
@@ -75,10 +85,6 @@ printOK_ = Prelude.putStrLn "OK"
 foreign export ccall "printNum_" printNum_ :: Int -> IO ()
 foreign import ccall "&printNum_" printNum_ptr :: FunPtr (Int -> IO ())
 printNum_ n = print (intPtrToPtr $ fromIntegral n)
-
-foreign export ccall "setTransform_" setTransform_ :: Ptr () -> IO ()
-foreign import ccall "&setTransform_" setTransform_ptr :: FunPtr (Ptr () -> IO ())
-setTransform_ fun = modify $ \c -> c { transform = Just fun }
 
 initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alter"  ,Left $ Axiom XAlter),
@@ -99,10 +105,12 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
 
   ("alpha/c@"            , Right $ exportAlpha callStub1 address_ptr),    
   ("alpha/symbol-name"   , Right $ exportAlpha callStub1 symName_ptr),
+  ("alpha/name-symbol"   , Right $ exportAlpha callStub1 nameSym_ptr),
   ("alpha/set-transform" , Right $ exportAlpha callStub1 setTransform_ptr),    
   ("alpha/allocate"      , Right $ exportAlpha callStub1 allocate_ptr), 
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
+
   ]
 
 doTransform syn = gets transform >>= ($syn) . maybe return tr 
