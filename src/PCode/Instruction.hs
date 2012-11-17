@@ -23,7 +23,7 @@ data Instruction = Op Builtin ID [Value]
                  | Branch Value [Addr]
                  | Bind BindVar (Maybe ID)
                  | Noop
-data Code = Code [BindVar] [Instruction] BindVar
+data Code = Code [BindVar] [Instruction] (Maybe BindVar)
             deriving Show
 
 isNoop Noop = True
@@ -55,8 +55,7 @@ ret = Branch NullVal []
 isRet (Branch NullVal []) = True
 isRet _ = False
 
-concatCode c1 [] = c1
-concatCode c1 c2 = map (f g1) c1 ++ map (f g2) c2
+concatCode (Code [] c1 _) (Code [] c2 r) = Code [] (map (f g1) c1 ++ map (f g2) c2) r
   where f g (Branch v as) = Branch v (g as)
         f _ i = i
         g1 as = if null as then [l] else as
@@ -72,13 +71,8 @@ navigate code = (bs,instr,nexts,prevs)
 
 spanArray bs tree = array bs (assocs Nothing tree)
   where assocs p (Node a subs) = (a,(p,map rootLabel subs)):concatMap (assocs (Just a)) subs
-codeRefs (Code args code ret) = refs code (bindSyms ret++concatMap bindSyms args)
-  where refs code local = traverse (S.fromList local) (spanningTree 0 nexts)
-          where (_,instr,nexts,_) = navigate code
-                traverse local (Node i subs) = valRefs (instrVals (instr i)) ++ concatMap (traverse newLocal) subs
-                  where valRefs vals = [v | SymVal t v <- vals, t==SymID || not (S.member v local)]
-                        newLocal = S.union local (S.fromList (instrVars (instr i)))
-        
+codeRefs (Code args code ret) = [v | SymVal GValue v <- concatMap instrVals code]
+
 instance Show Instruction where  
   show (Op BCall d (f:args)) = show d ++ " = " ++ show f ++ "(" ++ intercalate "," (map show args) ++ ")"
   show (Op BSet v [val]) = show v ++ " = " ++ show val

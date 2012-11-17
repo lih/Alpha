@@ -3,7 +3,7 @@ module My.Control.Monad.State(
   module Control.Monad.State, 
   Field(..),(<.>),
   stateF,doF,modifyF,getF,getsF,putF,swapF,
-  fstF,sndF,
+  fstF,sndF,onF,
   withState
   ) where
 
@@ -23,6 +23,8 @@ putF f v                 = modifyF f (const v)
 swapF f v                = stateF f (,v) 
 
 Field (f,f') <.> Field (g,g') = Field (g . f, (\g s -> f' (g' g (f s)) s)) 
+
+onF (Field (t,t')) f x = t' (f (t x)) x
 
 withState s mx = get >>= \v -> put s >> mx >>= \x -> put v >> return x
 

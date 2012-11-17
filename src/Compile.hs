@@ -15,10 +15,11 @@ import My.Prelude
 import PCode
 import Syntax
 
-compile dest expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
+compile args ret expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
   where st = do
-          (_,(start,_)) <- compile' dest expr
-          simplify start >>= linearize --  >>= lift . uniquify
+          (_,(start,_)) <- compile' (fmap bindSym ret) expr
+          c <- simplify start >>= linearize >>= lift . uniquify args ret
+          return $ Code args c ret
 
 compile' dest (Symbol sym) = do
   name <- getSymName sym
@@ -93,17 +94,17 @@ compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
   compile' Nothing arg *>>= \v -> makeBackBranch v alts
 
 compileAxiom XVerb dest [Group (name:args),expr] = do
-  bindArgs <- mapM bindFromSyntax args
-  (sym,ret,code) <- compileBody name expr
-  lift $ modify $ exportSymVal sym (Verb (Code bindArgs code ret))
+  (sym,code) <- compileBody args name expr
+  lift $ modify $ exportSymVal sym (Verb code)
   compile' dest (Symbol sym)
 compileAxiom XVerb dest [Symbol s,Symbol a] = do
   lift $ modify $ \env -> exportSymVal s (lookupSymVal a env) env
   compile' dest (Symbol s)
 compileAxiom XNoun dest [Symbol sym,size,init] = do
-  (retSz,codeSz) <- compileExpr size
-  (retInit,codeInit) <- compileExpr init
-  lift $ modify $ exportSymVal sym $ Noun (Code [] codeSz (symBind retSz)) (Code [symBind sym] codeInit (symBind retInit))
+  v <- newVar
+  codeSz <- compileExpr [] (Just $ symBind v) size
+  codeInit <- compileExpr [Symbol sym] Nothing init
+  lift $ modify $ exportSymVal sym $ Noun codeSz codeInit
   compile' dest (Symbol sym)
 
 compileAxiom XLang _ [Symbol s] = do
@@ -116,15 +117,16 @@ compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
 
 compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "++show args
 
-compileExpr expr = do
-  ret <- newVar
-  (code,imps) <- lift $ compile (Just ret) expr
+compileExpr args ret expr = do
+  args <- mapM bindFromSyntax args
+  (code,imps) <- lift $ compile args ret expr
   modifyF importsF (imps++)
-  return (ret,code)
-compileBody retBind body = do
+  return code
+compileBody args retBind body = do
   bv <- bindFromSyntax retBind
-  (ret,code) <- compileExpr body
-  return (bindSym bv,bv { bindSym = ret },code)
+  ret <- newVar
+  code <- compileExpr args (Just bv { bindSym = ret }) body
+  return (bindSym bv,code)
 compileValue dest val = do
   c <- singleCode $< case dest of
     Just v -> createNode (Instr $ set v val)

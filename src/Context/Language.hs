@@ -57,12 +57,19 @@ envCast t = T.mapM (state . intern) t
               
 importLanguage getImport loadImport imp = merge imp
   where 
-    merge imp = gets language >>= \l -> unless (imp`isImport`l) $ do
-      l' <- getImport imp
-      mapM_ merge [imp | (imp,_) <- BM.toList (languagesL l')]
-      mergeLanguage l'
+    merge imp = gets language >>= \l -> ifThenElse (imp`isImport`l) (return False) $ do
+      (comp,l') <- getImport False imp
+      comps <- mapM merge [imp | (imp,_) <- BM.toList (languagesL l')]
+      let recomp = or comps
+      l' <- if not comp && recomp then do
+        (_,l') <- getImport True imp
+        mapM merge [imp | (imp,_) <- BM.toList (languagesL l')]
+        return l'
+                else return l'
+      mergeLanguage imp l'
       loadImport l'
-    mergeLanguage l' = doF languageF $ do
+      return $ comp || recomp
+    mergeLanguage imp l' = doF languageF $ do
       let Language { symbolsL = syms' , languagesL = mods' , maxIDL = mi' } = l'
       mapM_ (state . internSym) $ BM.keys syms'
       Language { maxIDL = mi, symbolsL = syms } <- get
@@ -82,9 +89,9 @@ importLanguage getImport loadImport imp = merge imp
             return $ s'-r'+r
           newVals = M.mapKeys tr $ M.map (translate tr) $ valuesL l'
       modify $ \l -> l {
-        languagesL = BM.insert imp (Range (mi,mi+mi')) (languagesL l),
+        languagesL = BM.insert imp (Range (mi,mi+mi')) mods,
         valuesL    = M.unionWith (\_ a -> a) (valuesL l) newVals,
-        exportsL   = S.difference (exportsL l) (M.keysSet newVals) 
+        exportsL   = exportsL l S.\\ M.keysSet newVals 
         }
           
 exportLanguage e = e {

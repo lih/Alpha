@@ -8,7 +8,7 @@ import Data.Maybe
 import My.Prelude
 import ID
 
-data ValType = Value | Address | Size | SymID
+data ValType = Value | GValue | Address | Size | SymID
              deriving Eq
 data Value = SymVal ValType ID
            | IntVal Integer
@@ -31,7 +31,7 @@ readConstant s = let (a,b) = break (=='#') (filter (/='-') s) in eitherToMaybe $
         
 instance Show Value where
   show (SymVal t v)   = prefix++show v
-    where prefix = fromJust $ lookup t [(Value,""),(Address,"@"),(Size,"#"),(SymID,"$")]
+    where prefix = fromJust $ lookup t [(Value,""),(Address,"@"),(Size,"#"),(SymID,"$"),(GValue,"")]
   show (IntVal n)   = show n
   show NullVal      = "(null)"
 

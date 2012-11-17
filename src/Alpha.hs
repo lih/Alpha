@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction, ParallelListComp #-}
+{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction, ParallelListComp, TupleSections #-}
 import Compile
 import Context
 import Data.ByteString.Unsafe
@@ -57,6 +57,7 @@ doCompile opts = case programs opts of
     interactive = void $ compileFile "/dev/stdin"
     compileProgram (readProg -> (language,root)) = withDefaultContext $ do
       importLanguage compileLanguage (const $ return ()) language
+      l <- doF languageF get
       rootSym <- stateF languageF $ internSym root
       getAddressComp (outputArch opts) rootSym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -64,28 +65,30 @@ doCompile opts = case programs opts of
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
       writeElf root contents
-    compileLanguage name = do
-      source <- fromMaybe (error $ "Couldn't find source file for language "++name) $< findSource name
+    compileLanguage force name = do
       let langFile = languageFile name
-      b <- doTestOlder <&&> fileExist langFile <&&> (langFile `newerThan` source)
-      if b then either error id $< Ser.decode $< B.readFile langFile else do
-        putStrLn $ "Compiling language "++name
-        lang <- compileFile source
-        createDirectoryIfMissing True (dropFileName langFile)
-        B.writeFile langFile (Ser.encode lang)
-        return lang
-    loadLanguage name = compileLanguage name >>= execCode . initializeL >> languageState get
+      source <- findSource name
+      skip <- return (not force) <&&> fileExist langFile
+              <&&> maybe (return True) (\s -> langFile `newerThan` s) source
+      l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
+                        id $< Ser.decode $< B.readFile langFile else do
+             putStrLn $ "Compiling language "++name++"..."
+             lang <- compileFile $ fromMaybe (error $ "Couldn't find source file for language "++name) source
+             createDirectoryIfMissing True (dropFileName langFile)
+             B.writeFile langFile (Ser.encode lang)
+             return lang
+      return (not skip,l)
 
     compileFile src = withDefaultContext $ (>> gets language) $ do
       str <- readFile src
       let sTree = concat $ parseAlpha src str
-      code <- mapM compileExpr sTree
-      languageState $ modify $ \e -> exportLanguage $ e { initializeL = foldr concatCode [] code }
+      init <- mapM compileExpr sTree
+      languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
       where compileExpr expr = do
               symExpr <- languageState $ envCast expr
               trExpr <- doTransform symExpr
-              (code,imports) <- languageState $ compile Nothing trExpr
-              mapM_ (importLanguage compileLanguage (execCode . initializeL)) imports
+              (code,imports) <- languageState $ compile [] Nothing trExpr
+              mapM_ (importLanguage compileLanguage (mapM_ execCode . initializeL)) imports
               execCode code
               return code
 

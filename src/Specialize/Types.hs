@@ -34,7 +34,7 @@ type Register = Int
 data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
-  archInitials     :: [BindVar] -> BindVar -> (MemState,Future),
+  archInitials     :: [BindVar] -> Maybe BindVar -> (MemState,Future),
   archCompileInstr :: Instruction -> RWTL Info BinCode MemState Future ()
   }
 data MemState = MemState {
@@ -53,16 +53,14 @@ data Info = Info {
   sizes      :: Map ID Int,
   actives    :: Set ID,
   clobbers   :: Relation ID ID,
-  locals     :: Set ID,
   branchPos  :: (Int,Int -> (Int,Int,Maybe MemState))
   }
 
 instance Show Info where
-  show (Info _ b sz a c l _) = "Info { bindings = "++show b
+  show (Info _ b sz a c _) = "Info { bindings = "++show b
                                ++", sizes = "++show sz
                                ++", actives = "++show a
                                ++", clobbers = "++show c
-                               ++", locals = "++show l
                                ++" }"
 
 registersF  = Field (registers  ,\r p -> p { registers = r })

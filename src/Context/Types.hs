@@ -32,7 +32,7 @@ data Language = Language {
   languagesL  :: Bimap String (Range ID),
   valuesL     :: Map ID Context.Types.Value,
   exportsL    :: Set ID,
-  initializeL :: [Instruction]
+  initializeL :: [Code]
   }
 symsF = Field (symbolsL,\s ce -> ce { symbolsL = s })
 valsF = Field (valuesL,\v ce -> ce { valuesL = v })

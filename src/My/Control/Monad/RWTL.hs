@@ -47,8 +47,7 @@ instance Monoid w => MonadFuture f (RWTL r w p f) where
                               in (p',f',a,w))
 
 listening m = censor (const mempty) $ do (_,w) <- listen m ; return w
-withFuture m = future (do
-                          f <- get
+withFuture m = future (do f <- get
                           f' <- lift $ future get
                           ret <- lift $ m f
                           put f'

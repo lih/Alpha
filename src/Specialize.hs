@@ -75,17 +75,17 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                   gen <- getsi fst ; fut <- getsi snd
                   when (gen i < gen j) $ changeFuture i (gen j) (nextFuture j (fut j))
     
-    infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA `applyA` localsA
+    infos = constA bounds (Info env) `applyA` bindingsA `applyA` sizesA `applyA` activesA `applyA` clobbersA
       where root i v = fmap fst $ M.lookup v (bindingsA!i)
             bindingsA = treeArray next M.empty
               where next _ bnd (Bind bv (Just id)) = insertMany bnd [(s,(id,n)) | (s,n,_) <- flattenBind defSize bv]
                     next _ bnd _ = bnd
-            sizesA = treeArray next (M.fromList [(s,n) | bv <- retVar:args, (s,_,n) <- flattenBind defSize bv])
+            sizesA = treeArray next (M.fromList [(s,n) | bv <- maybe id (:) retVar args, (s,_,n) <- flattenBind defSize bv])
               where next _ bnd (Bind bv _) = insertMany bnd [(s,n) | (s,_,n) <- flattenBind defSize bv]
                     next _ bnd _ = bnd
             activesA = fmap snd $ saturate fun prevs nexts init start
               where init = array bounds [(i,initActives i) | i <- uncurry enumFromTo bounds]
-                      where retActives = S.unions [clobbers 0 s | s <- bindSyms retVar]
+                      where retActives = S.unions [clobbers 0 s | s <- maybe [] bindSyms retVar]
                             initActives i = pair (if isRet (instr i) then retActives else mempty)
                             pair a = (a,a)
                     start = concat [prevs i | i <- indices init, isRet (instr i)]
@@ -98,12 +98,8 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                             addActives (Branch (SymVal Value id) _) s = s <> clobbers i id 
                             addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
-            localsA = treeArray next (S.fromList [v | bv <- retVar:args, v <- bindSyms bv])
-              where next _ s (Bind bv _) = s `S.union` S.fromList (bindSyms bv)
-                    next _ s (Op _ v _) = S.insert v s
-                    next _ s _ = s
             clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)
-            clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- retVar:args])
+            clobbersA = treeArray next (foldl (next undefined) R.empty [Bind bv Nothing | bv <- maybe id (:) retVar args])
               where next i r (Bind bv v) = insertManyA r assocs
                       where assocs = [(bindSym bv,s) | bv <- bindNodes bv
                                                      , s <- bindSyms bv]

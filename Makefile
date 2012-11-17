@@ -13,13 +13,13 @@ install: all
 	cabal install
 
 find:
-	find src -name '*.hs' | xargs sed -ri 's/!#/!/'
+	grep -R '\bValue' src
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l
 	@echo -n 'Total size (in bytes): '
 	@find src -type f | xargs cat | wc -c
-	@echo 'Biggest files (number of lines):'
+	@echo 'Biggest files (in LoC):'
 	@find src -type f | xargs wc -l | head -n-1 | sort -nr | head
 
 

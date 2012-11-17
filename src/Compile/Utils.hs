@@ -20,15 +20,21 @@ import Translate
 
 import Debug.Trace
 
-uniquify [] = return []
-uniquify code = flatten $< descendM desc M.empty $ spanningTree 0 nexts
-  where (_,instr,nexts,_) = navigate code
-        desc (instr -> Bind bv v) m = do
+uniquify a r [] = uniquify a r [ret]
+uniquify args ret code = flatten $< descendM uniq (M.fromList $ zip syms syms) $ spanningTree 0 nexts
+  where syms = concatMap bindSyms $ maybe id (:) ret args
+        (_,instr,nexts,_) = navigate code
+        uniq (instr -> Bind bv v) m = do
           news <- mapM (const $ state createSym) (bindSyms bv)
           let m' = foldr (uncurry M.insert) m (zip (bindSyms bv) news)
           return (Bind (translate (translateBy m') bv) (fmap (translateBy m) v),m')
-        desc i m = return (translate (translateBy m) (instr i),m)
+        uniq i m = return (onF fstF (translate (translateBy m)) $ withLocals m $ instr i)
+        localVal m (SymVal Value s) | not $ M.member s m = SymVal GValue s
+        localVal m v = v
         translateBy m s = fromMaybe s $ M.lookup s m
+        withLocals m (Op b v vs) = (Op b v (map (localVal m) vs),M.insert v v m)
+        withLocals m (Branch v a) = (Branch (localVal m v) a,m)
+        withLocals m i = (i,m)
 
 simplify :: Monad m => [Node] -> StateT CompileState m [Node]
 simplify start = do

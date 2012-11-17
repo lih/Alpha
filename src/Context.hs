@@ -165,8 +165,7 @@ evalCode wrap stub code f = do
   id <- languageState $ state createSym >>= \i -> modify (setSymVal i (Verb code)) >> return i
   p <- getAddressJIT id
   unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p) 
-execCode [] = return ()
-execCode instrs = evalCode mkProc execStub (Code [] instrs (symBind (ID (-1)))) id
+execCode c = evalCode mkProc execStub c id
 
 getAddress arch lookup register = withRef addressRef getAddr . getAddr
   where

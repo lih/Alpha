@@ -28,7 +28,7 @@ instance Translatable PCode.Value where
   translate tr (SymVal t id) = SymVal t (translate tr id)
   translate tr v = v
 instance Translatable Code where
-  translate tr (Code args code ret) = Code (translate tr args) (translate tr code) (translate tr ret)
+  translate tr (Code args code ret) = Code (translate tr args) (translate tr code) (fmap (translate tr) ret)
 instance Translatable BindVar where
   translate tr (BindVar id s pad subs) = BindVar (translate tr id) s pad [(translate tr bv,s) | (bv,s) <- subs]
 
