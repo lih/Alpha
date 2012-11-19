@@ -33,7 +33,7 @@ compile your Alpha programs with that simple command:
 
     alpha <language>:<symbol>
 
-where '<symbol>' and '<language>' are respectively the name of the entry symbol to your
+where `<symbol>` and `<language>` are respectively the name of the entry symbol to your
 program and the name of the language in which the compiler might find that symbol. 
 
 Alpha also has an interactive mode that you may use by calling it without arguments. That
