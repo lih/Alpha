@@ -29,7 +29,7 @@ uniquify args ret code = flatten $< descendM uniq (M.fromList $ zip syms syms) $
           let m' = foldr (uncurry M.insert) m (zip (bindSyms bv) news)
           return (Bind (translate (translateBy m') bv) (fmap (translateBy m) v),m')
         uniq i m = return (onF fstF (translate (translateBy m)) $ withLocals m $ instr i)
-        localVal m (SymVal Value s) | not $ M.member s m = SymVal GValue s
+        localVal m (SymVal t s) | (t==Value || t==Address) && not (M.member s m) = SymVal GValue s
         localVal m v = v
         translateBy m s = fromMaybe s $ M.lookup s m
         withLocals m (Op b v vs) = (Op b v (map (localVal m) vs),M.insert v v m)

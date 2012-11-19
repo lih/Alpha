@@ -9,7 +9,7 @@ import qualified Data.Bimap as BM
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Serialize as Ser
-import Elf (writeElf)
+import Elf (writeElf,entryAddress)
 import Foreign hiding (void)
 import My.Control.Monad
 import My.Control.Monad.State hiding ((<.>))
@@ -36,7 +36,10 @@ execute s = case action s of
   PrintVersion -> printVersion
   Compile -> doCompile s
 
-version = "0.9999"
+formatEntry Elf64 = entryAddress
+formatEntry (Raw n) = n
+
+version = "0.99999"
 printHelp = putStrLn helpMsg
 printVersion = putStrLn $ "Alpha version "++version
 
@@ -49,13 +52,13 @@ doCompile opts = case programs opts of
   [] -> interactive
   progs -> mapM_ compileProgram progs
   where
+    entry = formatEntry $ outputFmt opts
     languageFile language = languageDir opts</>language<.>"l"
     findSource language = findM doesFileExist (concat [[base<.>"a",base] | dir <- sourceDirs opts
                                                                          , let base = dir</>language])
-    readProg s = let (a,':':b) = break (==':') s in (a,b)
 
     interactive = void $ compileFile "/dev/stdin"
-    compileProgram (readProg -> (language,root)) = withDefaultContext $ do
+    compileProgram (language,root) = withDefaultContext entry $ do
       importLanguage compileLanguage (const $ return ()) language
       l <- doF languageF get
       rootSym <- stateF languageF $ internSym root
@@ -79,7 +82,7 @@ doCompile opts = case programs opts of
              return lang
       return (not skip,l)
 
-    compileFile src = withDefaultContext $ (>> gets language) $ do
+    compileFile src = withDefaultContext entry $ (>> gets language) $ do
       str <- readFile src
       let sTree = concat $ parseAlpha src str
       init <- mapM compileExpr sTree

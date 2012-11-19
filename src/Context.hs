@@ -42,7 +42,7 @@ foreign import ccall "dynamic" mkFunTransform :: FunPtr (Ptr () -> Ptr() -> IO (
 withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
 funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
 
-addressRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
+compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 contextRef = unsafePerformIO $ newIORef (undefined :: Context)
 instance MonadState Context IO where
   get = readIORef contextRef
@@ -58,9 +58,9 @@ foreign export ccall "setTransform_" setTransform_ :: Ptr () -> IO ()
 foreign import ccall "&setTransform_" setTransform_ptr :: FunPtr (Ptr () -> IO ())
 setTransform_ fun = modify $ \c -> c { transform = Just fun }
 
-foreign export ccall "address_" address_ :: ID -> IO Int
-foreign import ccall "&address_" address_ptr :: FunPtr (ID -> IO Int)
-address_ id = readIORef addressRef >>= ($id)
+foreign export ccall "compAddr_" compAddr_ :: ID -> IO Int
+foreign import ccall "&compAddr_" compAddr_ptr :: FunPtr (ID -> IO Int)
+compAddr_ id = readIORef compAddrRef >>= ($id)
 
 foreign export ccall "symName_" symName_ :: ID -> IO (Ptr Word8)
 foreign import ccall "&symName_" symName_ptr :: FunPtr (ID -> IO (Ptr Word8))
@@ -68,16 +68,21 @@ symName_ sym = do
   n <- gets (lookupSymName sym . language)
   ret <- newArray0 0 (map c2w $ fromMaybe "" n)
   return ret
-
 foreign export ccall "nameSym_" nameSym_ :: Ptr Word8 -> IO ID
 foreign import ccall "&nameSym_" nameSym_ptr :: FunPtr (Ptr Word8 -> IO ID)
 nameSym_ p = do
   l <- peekArray0 0 p
   stateF languageF (internSym $ map w2c l)
-  
+foreign export ccall "createSym_" createSym_ :: IO ID
+foreign import ccall "&createSym_" createSym_ptr :: FunPtr (IO ID)
+createSym_ = stateF languageF createSym
+
 foreign export ccall "allocate_" allocate_ :: Int -> IO (Ptr ())
 foreign import ccall "&allocate_" allocate_ptr :: FunPtr (Int -> IO (Ptr ()))
 allocate_ = mallocBytes
+foreign export ccall "free_" free_ :: Ptr() -> IO ()
+foreign import ccall "&free_" free_ptr :: FunPtr (Ptr() -> IO ())
+free_ = free
 
 foreign export ccall "printOK_" printOK_ :: IO ()
 foreign import ccall "&printOK_" printOK_ptr :: FunPtr (IO ())
@@ -103,11 +108,16 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("@"      ,Left $ Axiom XAddr),
   ("#"      ,Left $ Axiom XSize)] ++ [
 
-  ("alpha/c@"            , Right $ exportAlpha callStub1 address_ptr),    
+  ("alpha/c@"            , Right $ exportAlpha callStub1 compAddr_ptr),    
+  ("alpha/create-symbol" , Right $ exportAlpha callStub0 createSym_ptr),
   ("alpha/symbol-name"   , Right $ exportAlpha callStub1 symName_ptr),
   ("alpha/name-symbol"   , Right $ exportAlpha callStub1 nameSym_ptr),
+
   ("alpha/set-transform" , Right $ exportAlpha callStub1 setTransform_ptr),    
+
   ("alpha/allocate"      , Right $ exportAlpha callStub1 allocate_ptr), 
+  ("alpha/free"          , Right $ exportAlpha callStub1 free_ptr), 
+  
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
 
@@ -142,7 +152,7 @@ doTransform syn = gets transform >>= ($syn) . maybe return tr
             1 -> do
               liftM (Symbol . ID) $ peek p'
               
-initialContext = C lang jitA M.empty (fromIntegral entryAddress) Nothing
+initialContext entry = C lang jitA M.empty (fromIntegral entry) Nothing
   where (lang,jitA) = execState (mapM_ st initialBindings) (Lang.empty,M.empty)
           where st (s,v) = do
                   i <- stateF fstF (internSym s)
@@ -150,7 +160,7 @@ initialContext = C lang jitA M.empty (fromIntegral entryAddress) Nothing
                     Left v -> modifyF fstF (setSymVal i v)
                     Right p -> modifyF sndF (M.insert i p)
 
-withDefaultContext = withState initialContext
+withDefaultContext = withState . initialContext
 
 contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
 languageState = contextState . doF languageF
@@ -167,7 +177,7 @@ evalCode wrap stub code f = do
   unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p) 
 execCode c = evalCode mkProc execStub c id
 
-getAddress arch lookup register = withRef addressRef getAddr . getAddr
+getAddress arch lookup register = withRef compAddrRef getAddr . getAddr
   where
     getAddr sym = lookup sym >>= \val -> case val of
       Just a -> return a

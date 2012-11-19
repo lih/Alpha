@@ -210,7 +210,7 @@ opsCode (rr,ri,ir,ii) dest v v' = case (v,v') of
   (Left r,Left r') -> rr dest r r'
   (Left r,Right v) ->  ri dest r v
   (Right v,Left r) -> ir dest v r
-  (Right (s,n),Right (s',n')) -> movi dest (max s s',liftM2 ii n n')
+  (Right (s,n),Right (s',n')) -> movi dest (min s s',liftM2 ii n n')
 
 argVal (IntVal n) = Right $ withSize n
 argVal (SymVal Size s) = Right $ withSize $ fromMaybe defSize $ M.lookup s (sizes ?info)
@@ -292,16 +292,16 @@ storeRegs rs = lift regInfo >>= \(regs,_) -> do
       storeGroup g = do
         ch <- lift $ gets (flip S.member . changed)
         let loaded = [(ch s,ge) | ge@(_,s,_) <- g]
-        reg <- if any fst loaded then loadRoot $ parent $ head g else return undefined
-        lift $ mapM_ (\(c,ge@(r,s,_)) -> when c (store reg ge)
-                                         >> associate r Nothing
-                                         >> modifyF changedF (S.delete s)) loaded
-        where store base (r,s,b) = do
+        root <- if any fst loaded then loadRoot $ parent $ head g else return undefined
+        lift $ mapM_ (\(c,ge@(r,s,_)) -> when c (store root ge >> modifyF changedF (S.delete s))) loaded
+        where store root (r,s,b) = do
                 n <- maybe (stackAddr (varSize s) s) (return . snd) b
-                st (base,fi n,fi (varSize s)) r
+                st (root,fi n,fi (varSize s)) r
       restrict m = gets (SB.partition isFree) >>= \(free',occ) -> put free' >> m >> modify (SB.union occ)
         where isFree = isNothing . lookupSymIn regs
+      
   restrict $ mapM_ storeGroup groups
+  lift $ mapM_ (\(r,_,_) -> associate r Nothing) vars
 
 loadArgs args = do
   let modFRegs regs = foldr ($) regs [maybe (BM.deleteR r) (flip BM.insert r) $ argValSym arg
@@ -315,9 +315,9 @@ loadArgs args = do
                                       $ mfilter (`SB.member` free) (BM.lookup s regs)
         argAlloc (_,Just r) = return (Left $ Right r)
         argNew = leftK (allocReg <|||> return)
-    modify $ \s -> foldr SB.delete s fixed
+    modify $ SB.deleteMany fixed
     alls <- mapM argAlloc args
-    modify $ \s -> foldr SB.delete s [r | Left (Right r) <- alls]
+    modify $ SB.deleteMany [r | Left (Right r) <- alls]
     allocs <- mapM argNew alls
     let assocs = filter (\(r,arg,_) -> not $ (myWorkIsDone r ||| const False) (argVal arg))
                  $ lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
@@ -328,18 +328,16 @@ loadArgs args = do
         loadGroup g = do
           base <- loadRoot (parent $ head g)
           mapM_ (load base) g
-          where load base (r,arg,b) = lift regInfo >>= \(regs,_) -> do
-                  when (BM.memberR r regs) (storeRegs [r])
-                  lift $ case argVal arg of
-                    Right v -> movi r v
-                    Left s -> case lookupRegIn regs s of
-                      Just r' -> mov r r'
-                      Nothing -> do
-                        n <- maybe (stackAddr (varSize s) s) return $ fmap snd b
-                        if symValType arg == Value
-                          then ld r (base,fi n,fi (varSize s))
-                          else lea r base (fi n)
-                  lift $ associate r ((Just ||| const Nothing) $ argVal arg)  
+          where load base (r,arg,b) = do
+                  storeRegs [r] ; lift $ do
+                    case argVal arg of
+                      Right v -> movi r v
+                      Left s -> regInfo >>= \(regs,_) -> case (lookupRegIn regs s,symValType arg) of
+                        (Just r',Value) -> mov r r'
+                        (_,t) -> maybe (stackAddr (varSize s) s) return (fmap snd b) >>= \n -> case t of
+                          Value -> ld r (base,fi n,fi (varSize s))
+                          Address -> lea r base (fi n)
+                    associate r $ (Just ||| const Nothing) (argVal arg)  
 
     mapM_ loadGroup groups
     return allocs

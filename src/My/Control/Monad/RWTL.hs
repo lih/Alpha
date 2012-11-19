@@ -24,6 +24,7 @@ instance Monoid w => Monad (RWTL r w p f) where
             where (p',f'',a,w) = runRWTL tl r p f'
                   (p'',f',b,w') = runRWTL (cc a) r p' f
   return a = RWTL (\r p f -> (p,f,a,mempty))
+
 -- the Monoid constraint is not necesary if you want to be precise,
 -- but the alternative to liftM would be extremely ugly
 instance Monoid w => Functor (RWTL r w p f) where

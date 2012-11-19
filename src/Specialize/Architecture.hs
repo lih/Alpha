@@ -16,7 +16,7 @@ instance Show Architecture where
 
 undef s = error $ "undefined ("++s++")"
 
-architectures = [hostArch,arch_x86,arch_x86_64,arch_arm]
+architectures = [hostArch,arch_x86_64]
 nullArch = Arch undefined undefined (undef "initials") (undef "compile")
 arch_x86 = nullArch { archName = "x86", archDefaultSize = 4 }
 arch_arm = nullArch { archName = "arm", archDefaultSize = 4 }

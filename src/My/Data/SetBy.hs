@@ -2,7 +2,7 @@ module My.Data.SetBy (SetBy
                      ,empty,fromList,fromAscList
                      ,null
                      ,toList,toAscList
-                     ,insert,delete,member
+                     ,insert,delete,deleteMany,member
                      ,findMin
                      ,partition
                      ,union) where
@@ -35,6 +35,7 @@ toAscList (SetBy _ t) = AVL.asListL t
 
 insert e (SetBy cmp t) = SetBy cmp (AVL.push (cmp e) e t)
 delete e (SetBy cmp t) = SetBy cmp (fromMaybe t $ fmap snd $ AVL.tryPop (cmp e) t)
+deleteMany l s = foldr delete s l
 member e (SetBy cmp t) = isJust $ AVL.tryRead t (cmp e)
 
 findMin (SetBy _ t) = AVL.assertReadL t
