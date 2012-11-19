@@ -32,7 +32,7 @@ splitArg s = case break (==':') s of
   (a,"") -> [a]
 
 options = 
-  [Option ['h'] ["help"] (NoArg Help) 
+  [Option ['h','?'] ["help"] (NoArg Help) 
    "prints usage information"
   ,Option ['v'] ["version"] (NoArg Version) 
    "prints Alpha's version information"
