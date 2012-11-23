@@ -30,7 +30,7 @@ import Debug.Trace
 
 worldID = ID (-1)
 
-specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence codes)
+specialize arch env (Code args code retVar) = debug code `seq` (sum sizes,B.concat $< sequence codes)
   where
     ~(estimates,sizes,codes) = unzip3 [v | BC v <- elems instructions]
     (past,future) = archInitials arch args retVar
@@ -55,11 +55,11 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
         nextFuture i f = snd4 $ runInstr i undefined f (const Nothing)
         gens = array bounds $ zip (flatten codeTree) [0..]
         gens' = array bounds $ zip [0..] (flatten codeTree)
-        getPast g i | g >= gens!i = Just $ fst $ instrs!#i
-                    | otherwise = Nothing
+        getPast g i | g == maximum (filter (<=(gens!i)) $ map (gens!) $ prevs i) = Nothing
+                    | otherwise = Just $ fst $ instrs!i
         instrs = array bounds $ flatten $ descend desc past codeTree
           where desc i p = ((i,(p,c)),p')
-                  where ~(p',_,_,c) = runInstr i p (snd $ futures!g!#i) (getPast g)
+                  where ~(p',_,_,c) = runInstr i p (snd $ futures!g!i) (getPast g)
                         g = gens!i
         futures = fmap snd $ listArray bounds $ iterate nextFut (1,initial)
           where initial = execState (sequence_ [changeFuture i 0 (futureOf i) | i <- map last (branches codeTree)])
@@ -68,7 +68,7 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                    | otherwise = emptyFuture
                 nextFut (g,fa) = (g+1,fa')
                   where fa' = execState (sequence_ [changeFuture i g newFut | i <- prevs instr, head (nexts i)==instr]) fa
-                        instr = gens'!g ; newFut = Future $ registers $ fst (instrs!#instr)
+                        instr = gens'!g ; newFut = Future $ registers $ fst (instrs!instr)
                 changeFuture i g f = puti i (g,f) >> mapM_ propagate (prevs i)
                 propagate i = do 
                   let j = head (nexts i)

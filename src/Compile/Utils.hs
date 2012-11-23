@@ -13,17 +13,25 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Function
 import Data.Maybe
+import Data.Array
 import PCode
 import Syntax  
 
 import Translate
 
-import Debug.Trace
+flattenable code = trace (show code) $ map (f . instr) code'
+  where f (Branch v alts) = Branch v (map (a!) alts)
+        f i = i
+        (bounds,instr,nexts,_) = navigate code
+        t = spanningTree 0 nexts ; code' = flatten t
+        a = array bounds (zip code' [0..])
 
 uniquify a r [] = uniquify a r [ret]
-uniquify args ret code = flatten $< descendM uniq (M.fromList $ zip syms syms) $ spanningTree 0 nexts
+uniquify args ret code = do
+  ret <- descendM uniq (M.fromList $ zip syms syms) $ spanningTree 0 nexts
+  return (flatten ret)
   where syms = concatMap bindSyms $ maybe id (:) ret args
-        (_,instr,nexts,_) = navigate code
+        (_,instr,nexts,_) = navigate $ flattenable code
         uniq (instr -> Bind bv v) m = do
           news <- mapM (const $ state createSym) (bindSyms bv)
           let m' = foldr (uncurry M.insert) m (zip (bindSyms bv) news)
@@ -32,7 +40,7 @@ uniquify args ret code = flatten $< descendM uniq (M.fromList $ zip syms syms) $
         localVal m (SymVal t s) | (t==Value || t==Address) && not (M.member s m) = SymVal GValue s
         localVal m v = v
         translateBy m s = fromMaybe s $ M.lookup s m
-        withLocals m (Op b v vs) = (Op b v (map (localVal m) vs),M.insert v v m)
+        withLocals m (Op b v vs) = (Op b v (map (localVal m) vs),M.insertWith (flip const) v v m)
         withLocals m (Branch v a) = (Branch (localVal m v) a,m)
         withLocals m i = (i,m)
 

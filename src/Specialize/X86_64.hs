@@ -321,12 +321,14 @@ loadArgs args = do
     allocs <- mapM argNew alls
     let assocs = filter (\(r,arg,_) -> not $ (myWorkIsDone r ||| const False) (argVal arg))
                  $ lefts [left (,arg,bind arg) all | all <- allocs | (arg,_) <- args]
-        bind arg = argValSym arg >>= binding
+          where bind (SymVal t s) | t`elem`[Value,Address] = binding s
+                bind _ = Nothing
         groups = classesBy ((==)`on`parent) assocs
         parent (_,_,b) = fmap fst b
         myWorkIsDone r s = BM.pairMember (s,r) regs
-        loadGroup g = do
+        loadGroup g = debug g `seq` do
           base <- loadRoot (parent $ head g)
+          debug base `seq` return ()
           mapM_ (load base) g
           where load base (r,arg,b) = do
                   storeRegs [r] ; lift $ do
@@ -387,7 +389,9 @@ compile' (Op b d vs) = do
     storeRegs [r | (s,r) <- BM.toList regs, not (isActive s), isJust (binding s)]
     lift $ modifyF registersF (BM.filter (const . isActive))
 compile' (Branch v alts) = withFreeSet $ do
-  let alignPast i = listening $ maybe doNothing (preserve . alignWith . registers) (instrPast i)
+  let alignPast i = listening $ maybe doNothing (\p -> preserve $ do
+                                                    lift $ putF frameF (frame p)
+                                                    alignWith $ registers p) (instrPast i)
       jmpc short long (BC ~(e,s,_)) (BC ~(e',s',_)) = BC (length long+4,length code,return $ B.pack code)
         where de = e'-e ; ds = s'-s
               code | de==0 = []

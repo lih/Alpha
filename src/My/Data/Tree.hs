@@ -8,10 +8,11 @@ import Data.Tree
 import qualified Data.Set as S
 import Control.Monad.State
 
-nubT t = evalState (unfoldTreeM unfold t) S.empty
-  where unfold (Node a subs) = do
-          modify (S.insert a) ; s <- get
-          return (a,[sub | sub <- subs, not (S.member (rootLabel sub) s)]) 
+nubT t = head $ evalState (nubNode t) S.empty
+  where nubNode (Node a subs) = gets (S.member a) >>= \b -> if b then return [] else do
+          modify (S.insert a)
+          subs <- mapM nubNode subs
+          return [Node a (concat subs)]
 iterateT seed f = unfoldTree (\a -> (a,f a)) seed
 
 branches (Node a []) = [[a]]

@@ -76,6 +76,9 @@ nameSym_ p = do
 foreign export ccall "createSym_" createSym_ :: IO ID
 foreign import ccall "&createSym_" createSym_ptr :: FunPtr (IO ID)
 createSym_ = stateF languageF createSym
+foreign export ccall "numSym_" numSym_ :: Int -> IO ID
+foreign import ccall "&numSym_" numSym_ptr :: FunPtr (Int -> IO ID)
+numSym_ = stateF languageF . internSym . show
 
 foreign export ccall "allocate_" allocate_ :: Int -> IO (Ptr ())
 foreign import ccall "&allocate_" allocate_ptr :: FunPtr (Int -> IO (Ptr ()))
@@ -110,6 +113,7 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
 
   ("alpha/c@"            , Right $ exportAlpha callStub1 compAddr_ptr),    
   ("alpha/create-symbol" , Right $ exportAlpha callStub0 createSym_ptr),
+  ("alpha/number-symbol" , Right $ exportAlpha callStub1 numSym_ptr),
   ("alpha/symbol-name"   , Right $ exportAlpha callStub1 symName_ptr),
   ("alpha/name-symbol"   , Right $ exportAlpha callStub1 nameSym_ptr),
 
@@ -120,7 +124,6 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
-
   ]
 
 doTransform syn = gets transform >>= ($syn) . maybe return tr 

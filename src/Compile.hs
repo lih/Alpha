@@ -46,7 +46,7 @@ compileBy op dest args = do
   sequence_ [createEdge TimeDep n' n | (_,l) <- code, n' <- l]
   return (SymVal Value dest,(n:concatMap fst code,[n]))
 
-compileBuiltin _ _ [] = nullCodeVal (IntVal 0)
+compileBuiltin _ dest [] = compileValue dest (IntVal 0)
 compileBuiltin b dest args = compileBy (Op b) dest args
 compileCall = compileBuiltin BCall
 
@@ -94,7 +94,11 @@ compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
   compile' Nothing arg *>>= \v -> makeBackBranch v alts
 
 compileAxiom XVerb dest [Group (name:args),expr] = do
-  (sym,code) <- compileBody args name expr
+  bv@BindVar { bindSym = sym } <- bindFromSyntax name
+  ret <- case bindSubs bv of
+    [] -> newVar >>= \ret -> return bv { bindSym = ret }
+    (h,_):_ -> return h 
+  code <- compileExpr args (Just ret) expr
   lift $ modify $ exportSymVal sym (Verb code)
   compile' dest (Symbol sym)
 compileAxiom XVerb dest [Symbol s,Symbol a] = do
@@ -122,11 +126,6 @@ compileExpr args ret expr = do
   (code,imps) <- lift $ compile args ret expr
   modifyF importsF (imps++)
   return code
-compileBody args retBind body = do
-  bv <- bindFromSyntax retBind
-  ret <- newVar
-  code <- compileExpr args (Just bv { bindSym = ret }) body
-  return (bindSym bv,code)
 compileValue dest val = do
   c <- singleCode $< case dest of
     Just v -> createNode (Instr $ set v val)

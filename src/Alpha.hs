@@ -67,7 +67,9 @@ doCompile opts = case programs opts of
       top <- gets compTop
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-      writeElf root contents
+      case outputFmt opts of
+        Elf64 -> writeElf root contents
+        Raw _ -> B.writeFile root contents
     compileLanguage force name = do
       let langFile = languageFile name
       source <- findSource name
