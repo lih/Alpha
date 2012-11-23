@@ -326,9 +326,8 @@ loadArgs args = do
         groups = classesBy ((==)`on`parent) assocs
         parent (_,_,b) = fmap fst b
         myWorkIsDone r s = BM.pairMember (s,r) regs
-        loadGroup g = debug g `seq` do
+        loadGroup g = do
           base <- loadRoot (parent $ head g)
-          debug base `seq` return ()
           mapM_ (load base) g
           where load base (r,arg,b) = do
                   storeRegs [r] ; lift $ do

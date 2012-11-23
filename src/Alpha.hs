@@ -39,14 +39,12 @@ execute s = case action s of
 formatEntry Elf64 = entryAddress
 formatEntry (Raw n) = n
 
-version = "0.99999"
+version = "1.0"
 printHelp = putStrLn helpMsg
 printVersion = putStrLn $ "Alpha version "++version
 
 newtype Str = Str String
 instance Show Str where show (Str s) = s
-
-doTestOlder = return True -- for testing purposes, turn makefile-style file dependencies checks on or off
 
 doCompile opts = case programs opts of
   [] -> interactive
@@ -73,8 +71,7 @@ doCompile opts = case programs opts of
     compileLanguage force name = do
       let langFile = languageFile name
       source <- findSource name
-      skip <- return (not force) <&&> fileExist langFile
-              <&&> maybe (return True) (\s -> langFile `newerThan` s) source
+      skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
       l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
                         id $< Ser.decode $< B.readFile langFile else do
              putStrLn $ "Compiling language "++name++"..."

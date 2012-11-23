@@ -2,24 +2,22 @@
 module Compile.Utils where
 
 import Compile.State as CS
-import qualified My.Data.Graph as G
-import My.Prelude
-import My.Control.Monad
-import My.Control.Monad.State
-import My.Data.List
-import My.Data.Tree
-
-import qualified Data.Map as M
-import qualified Data.Set as S
+import Data.Array
 import Data.Function
 import Data.Maybe
-import Data.Array
+import qualified Data.Map as M
+import qualified Data.Set as S
+import My.Control.Monad
+import My.Control.Monad.State
+import qualified My.Data.Graph as G
+import My.Data.List
+import My.Data.Tree
+import My.Prelude
 import PCode
 import Syntax  
-
 import Translate
 
-flattenable code = trace (show code) $ map (f . instr) code'
+flattenable code = map (f . instr) code'
   where f (Branch v alts) = Branch v (map (a!) alts)
         f i = i
         (bounds,instr,nexts,_) = navigate code

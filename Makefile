@@ -13,7 +13,7 @@ install: all
 	cabal install
 
 find:
-	grep -Rn 'debug' src
+	grep -Rn 'trace' src
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

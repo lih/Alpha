@@ -30,7 +30,7 @@ import Debug.Trace
 
 worldID = ID (-1)
 
-specialize arch env (Code args code retVar) = debug code `seq` (sum sizes,B.concat $< sequence codes)
+specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence codes)
   where
     ~(estimates,sizes,codes) = unzip3 [v | BC v <- elems instructions]
     (past,future) = archInitials arch args retVar
