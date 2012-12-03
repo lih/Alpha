@@ -124,7 +124,7 @@ compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "
 compileExpr args ret expr = do
   args <- mapM bindFromSyntax args
   (code,imps) <- lift $ compile args ret expr
-  modifyF importsF (imps++)
+  modifying imports_ (imps++)
   return code
 compileValue dest val = do
   c <- singleCode $< case dest of

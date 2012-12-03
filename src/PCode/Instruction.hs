@@ -50,8 +50,7 @@ flattenBind def = flatten
            | n0 <- scanl (+) p [n*sizeOf bv | (bv,n) <- subs]]
          
 set v val = Op BSet v [val]
-call v f args = Op BCall v (f:args)
-ret = Branch NullVal []
+-- ret = Branch NullVal []
 isRet (Branch NullVal []) = True
 isRet _ = False
 

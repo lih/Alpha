@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections, ViewPatterns, NoMonomorphismRestriction #-}
 module Compile.Utils where
 
+import Control.Category ((>>>))
 import Compile.State as CS
 import Data.Array
 import Data.Function
@@ -24,7 +25,7 @@ flattenable code = map (f . instr) code'
         t = spanningTree 0 nexts ; code' = flatten t
         a = array bounds (zip code' [0..])
 
-uniquify a r [] = uniquify a r [ret]
+uniquify a r [] = uniquify a r [Branch NullVal []]
 uniquify args ret code = do
   ret <- descendM uniq (M.fromList $ zip syms syms) $ spanningTree 0 nexts
   return (flatten ret)
@@ -34,7 +35,7 @@ uniquify args ret code = do
           news <- mapM (const $ state createSym) (bindSyms bv)
           let m' = foldr (uncurry M.insert) m (zip (bindSyms bv) news)
           return (Bind (translate (translateBy m') bv) (fmap (translateBy m) v),m')
-        uniq i m = return (onF fstF (translate (translateBy m)) $ withLocals m $ instr i)
+        uniq i m = return (translate (translateBy m) `on_` fst_ $ withLocals m $ instr i)
         localVal m (SymVal t s) | (t==Value || t==Address) && not (M.member s m) = SymVal GValue s
         localVal m v = v
         translateBy m s = fromMaybe s $ M.lookup s m
@@ -44,7 +45,7 @@ uniquify args ret code = do
 
 simplify :: Monad m => [Node] -> StateT CompileState m [Node]
 simplify start = do
-  oldDep <- getF depGraphF ; purgeAll ; newDep <- getF depGraphF
+  oldDep <- getting depGraph_ ; purgeAll ; newDep <- getting depGraph_
   return $ concatMap (newStart oldDep newDep) start
   where 
     purgeAll = do
@@ -84,7 +85,7 @@ data ANode = ANode {
   instr :: NodeData
   }
            deriving Show
-linearize start = getsF depGraphF (linearize' start)
+linearize start = getting (depGraph_ >>> f_ (linearize' start))
 linearize' start depG = instrs
   where 
     aG = annotate depG
@@ -102,7 +103,7 @@ linearize' start depG = instrs
       ANode { instr = BrPart v } -> [Branch v $ map branch (classesBy (===) oes)]
         where branch ns = minimum $ catMaybes [M.lookup n instrMap | (n,_) <- ns]
               (===) = (==)`on`snd
-      ANode { instr = Instr i } -> i : if null oes then [ret] else []
+      ANode { instr = Instr i } -> i : if null oes then [Branch NullVal []] else []
       where oes = outEdges c
 
     selectHeads l = [n | (n,c) <- l, weight (tag c)==1]

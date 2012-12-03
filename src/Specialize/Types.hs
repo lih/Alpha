@@ -1,18 +1,18 @@
 {-# LANGUAGE RankNTypes #-}
-module Specialize.Types(module Data.Word, module My.Control.Monad.RWTL
-                       ,module PCode, module ID,module Specialize.Frame
-                       ,Register(..),BinCode(..), isEmptyCode, binCodeData
+module Specialize.Types(BinCode(..), isEmptyCode, binCodeData
                        ,Architecture(..)
                        ,Info(..)
-                       ,MemState(..),Future(..), emptyFuture
-                       ,frameF, registersF, changedF, fregistersF) where
+                       ,Location(..), isFlags, regSyms, symLocs, symReg
+                       ,MemState(..), Future(..), emptyFuture
+                       ,frame_, locations_, flocations_) where
 
+import Data.Ord
 import Data.Bimap
 import Data.Set
 import Data.ByteString
 import Data.Map
-import Data.Relation
-import Data.Set
+import My.Data.Relation as R
+import Data.Set as S
 import Data.Word
 import ID
 import My.Control.Monad.State
@@ -30,7 +30,20 @@ instance Show BinCode where
 isEmptyCode (BC (e,_,_)) = e==0
 binCodeData (BC (_,_,b)) = b
 
-type Register = Int
+data Location = Register Int
+              | Memory
+              | Constant Integer
+              | Flags Int
+              deriving Show
+instance Eq Location where
+  a == b = compare a b == EQ
+instance Ord Location where
+  compare = comparing value
+    where value (Register r) = (0,Just $ fromIntegral r)
+          value Memory = (1,Nothing)
+          value (Constant n) = (2,Just n)
+          value (Flags _) = (3,Nothing)
+  
 data Architecture = Arch {
   archName         :: String,
   archDefaultSize  :: Int,
@@ -38,13 +51,12 @@ data Architecture = Arch {
   archCompileInstr :: Instruction -> RWTL Info BinCode MemState Future ()
   }
 data MemState = MemState {
-  registers :: Bimap ID Register,
-  changed   :: Set ID,
+  locations :: Relation ID Location,
   frame     :: Frame
   }
           deriving Show
 data Future = Future {
-  fregisters :: Bimap ID Register
+  flocations :: Relation ID Location
   }
             deriving Show
 data Info = Info {
@@ -63,9 +75,16 @@ instance Show Info where
                                ++", clobbers = "++show c
                                ++" }"
 
-registersF  = Field (registers  ,\r p -> p { registers = r })
-changedF    = Field (changed    ,\c p -> p { changed = c })
-frameF      = Field (frame      ,\f p -> p { frame = f })
-fregistersF = Field (fregisters ,\r f -> f { fregisters = r })
+locations_  = View (locations  ,\r p -> p { locations = r })
+frame_      = View (frame      ,\f p -> p { frame = f })
+flocations_ = View (flocations ,\r f -> f { flocations = r })
 
-emptyFuture = Future Data.Bimap.empty
+regNum (Register r) = Just r
+regNum _ = Nothing
+isFlags (Flags _) = True ; isFlags _ = False
+
+regSyms r locs = S.toList $ R.lookupDom (Register r) locs
+symLocs s locs = S.toList $ R.lookupRan s locs
+symReg s locs = msum [regNum l | l <- symLocs s locs]
+
+emptyFuture = Future R.empty

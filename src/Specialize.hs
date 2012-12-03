@@ -12,6 +12,7 @@ import Data.Word
 import ID
 import My.Control.Monad
 import My.Control.Monad.State
+import My.Control.Monad.RWTL
 import My.Data.Either
 import My.Data.List
 import My.Data.Tree
@@ -21,7 +22,7 @@ import Specialize.Architecture
 import Specialize.Types
 import qualified Data.ByteString as B
 import qualified Data.Map as M
-import qualified Data.Relation as R
+import qualified My.Data.Relation as R
 import qualified Data.Set as S
 
 import System.IO.Unsafe
@@ -68,7 +69,7 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                    | otherwise = emptyFuture
                 nextFut (g,fa) = (g+1,fa')
                   where fa' = execState (sequence_ [changeFuture i g newFut | i <- prevs instr, head (nexts i)==instr]) fa
-                        instr = gens'!g ; newFut = Future $ registers $ fst (instrs!instr)
+                        instr = gens'!g ; newFut = Future $ locations $ fst (instrs!instr)
                 changeFuture i g f = puti i (g,f) >> mapM_ propagate (prevs i)
                 propagate i = do 
                   let j = head (nexts i)
@@ -98,7 +99,7 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                             addActives (Branch (SymVal Value id) _) s = S.insert id s
                             addActives (Bind bv v) s = maybe id S.insert v $ s S.\\ S.fromList (bindSyms bv)
                             addActives _ s = s
-            clobbers i v = fromMaybe (S.singleton v) $ R.lookupRan v (clobbersA!i)
+            clobbers i v = ifEmpty (S.singleton v) $ R.lookupRan v (clobbersA!i)
             clobbersA = treeArray next (insertManyA (R.singleton worldID worldID)
                                         [(bindSym bv,s) | bv <- maybe id (:) retVar args
                                                         , bv <- bindNodes bv
@@ -115,14 +116,17 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                         , a <- [(v,worldID),(v,v)]]
                     next _ r _ = r
                     insertManyA r as = insertManyR r [a | (x,y) <- as, a <- [(x,y),(y,x)]]
-            lookupRefs v r = fromMaybe (S.singleton worldID) $ R.lookupRan v r
+            lookupRefs v r = ifEmpty (S.singleton worldID) $ R.lookupRan v r
             argRefs i vs = S.toList $ S.fromList [s | SymVal Address s <- vs]
                            <> S.unions [references i s | SymVal Value s <- vs]
             references i v = lookupRefs v (referencesA!i)
             referencesA = treeArray next $ insertManyR R.empty [(s,worldID) | arg <- args, s <- bindSyms arg]
               where next i r (Op _ v vs) = insertManyR r' (map (v,) $ argRefs i vs)
-                      where r' = foldr (uncurry R.delete) r [(v,v') | v' <- maybe [] S.toList $ R.lookupRan v r]
+                      where r' = foldr (uncurry R.delete) r [(v,v') | v' <- S.toList $ R.lookupRan v r]
                     next _ r _ = r
+
+ifEmpty def s | S.null s = def
+              | otherwise = s
 
 constA bs v = accumArray const v bs []
 zipWithA f a b = array (bounds a) [(i,f x y) | (i,x) <- assocs a | y <- elems b]

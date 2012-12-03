@@ -34,8 +34,8 @@ data Language = Language {
   exportsL    :: Set ID,
   initializeL :: [Code]
   }
-symsF = Field (symbolsL,\s ce -> ce { symbolsL = s })
-valsF = Field (valuesL,\v ce -> ce { valuesL = v })
+syms_ = View (symbolsL,\s ce -> ce { symbolsL = s })
+vals_ = View (valuesL,\v ce -> ce { valuesL = v })
 
 data Context = C {
   language      :: Language,
@@ -44,7 +44,7 @@ data Context = C {
   compTop       :: Int,
   transform     :: Maybe (Ptr ())
   }
-jitAddressesF  = Field (jitAddresses,\a c -> c { jitAddresses = a })
-compAddressesF = Field (compAddresses,\a c -> c { compAddresses = a })
-languageF      = Field (language,\a c -> c { language = a })
-compTopF       = Field (compTop,\a c -> c { compTop = a })
+jitAddresses_  = View (jitAddresses,\a c -> c { jitAddresses = a })
+compAddresses_ = View (compAddresses,\a c -> c { compAddresses = a })
+language_      = View (language,\a c -> c { language = a })
+compTop_       = View (compTop,\a c -> c { compTop = a })

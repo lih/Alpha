@@ -1,30 +1,33 @@
 {-# LANGUAGE TupleSections, NoMonomorphismRestriction #-}
 module My.Control.Monad.State(
   module Control.Monad.State, 
-  Field(..),(<.>),
-  stateF,doF,modifyF,getF,getsF,putF,swapF,
-  fstF,sndF,onF,
+  View(..),
+  viewState,viewing,modifying,getting,putting,
+  fst_,snd_,id_,f_,on_,
   withState
   ) where
 
+import Prelude hiding ((.),id)
 import Control.Monad.State hiding (withState)
+import Control.Category
 
-newtype Field f s = Field (s -> f,f -> s -> s)
+newtype View a v = View (a -> v,v -> a -> a)
+instance Category View where
+  id = id_
+  View (u,u') . View (v,v') = View (u . v, \x a -> v' (u' x (v a)) a)
 
-fstF = Field (fst,(\x ~(a,b) -> (x,b))) :: Field a (a,b)
-sndF = Field (snd,(\y ~(a,b) -> (a,y))) :: Field b (a,b)
+fst_ = View (fst,(\x ~(a,b) -> (x,b)))
+snd_ = View (snd,(\y ~(a,b) -> (a,y)))
+id_ = View (id,const)
+f_ f = View (f,error "undefined function view")
 
-stateF (Field (m,m')) st = get >>= \s -> let ~(v,st') = st (m s) in put (m' st' s) >> return v
-doF f st                 = stateF f (runState st)
-modifyF fld f            = stateF fld (\s -> ((),f s))
-getF (Field (f,_))       = gets f 
-getsF (Field (f,_)) g    = gets (g . f)
-putF f v                 = modifyF f (const v)
-swapF f v                = stateF f (,v) 
+viewState (View (v,v')) run = state (\s -> let ~(x,s') = run (v s) in (x,v' s' s))
+viewing v st                = viewState v (runState st)
+modifying v f               = viewState v (\s -> ((),f s))
+getting (View (f,_))        = gets f 
+putting f v                 = modifying f (const v)
 
-Field (f,f') <.> Field (g,g') = Field (g . f, (\g s -> f' (g' g (f s)) s)) 
-
-onF (Field (t,t')) f x = t' (f (t x)) x
+f `on_` View (v,v') = \x -> v' (f (v x)) x
 
 withState s mx = get >>= \v -> put s >> mx >>= \x -> put v >> return x
 

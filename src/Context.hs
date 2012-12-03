@@ -72,13 +72,13 @@ foreign export ccall "nameSym_" nameSym_ :: Ptr Word8 -> IO ID
 foreign import ccall "&nameSym_" nameSym_ptr :: FunPtr (Ptr Word8 -> IO ID)
 nameSym_ p = do
   l <- peekArray0 0 p
-  stateF languageF (internSym $ map w2c l)
+  viewState language_ (internSym $ map w2c l)
 foreign export ccall "createSym_" createSym_ :: IO ID
 foreign import ccall "&createSym_" createSym_ptr :: FunPtr (IO ID)
-createSym_ = stateF languageF createSym
+createSym_ = viewState language_ createSym
 foreign export ccall "numSym_" numSym_ :: Int -> IO ID
 foreign import ccall "&numSym_" numSym_ptr :: FunPtr (Int -> IO ID)
-numSym_ = stateF languageF . internSym . show
+numSym_ = viewState language_ . internSym . show
 
 foreign export ccall "allocate_" allocate_ :: Int -> IO (Ptr ())
 foreign import ccall "&allocate_" allocate_ptr :: FunPtr (Int -> IO (Ptr ()))
@@ -158,15 +158,15 @@ doTransform syn = gets transform >>= ($syn) . maybe return tr
 initialContext entry = C lang jitA M.empty (fromIntegral entry) Nothing
   where (lang,jitA) = execState (mapM_ st initialBindings) (Lang.empty,M.empty)
           where st (s,v) = do
-                  i <- stateF fstF (internSym s)
+                  i <- viewState fst_ (internSym s)
                   case v of
-                    Left v -> modifyF fstF (setSymVal i v)
-                    Right p -> modifyF sndF (M.insert i p)
+                    Left v -> modifying fst_ (setSymVal i v)
+                    Right p -> modifying snd_ (M.insert i p)
 
 withDefaultContext = withState . initialContext
 
 contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
-languageState = contextState . doF languageF
+languageState = contextState . viewing language_
 
 pageSize = fromIntegral $ unsafePerformIO $ c'sysconf c'_SC_PAGESIZE
 enableExec p size = do
@@ -204,11 +204,11 @@ getAddressJIT = getAddress hostArch lookup register
   where lookup id = do
           val <- M.lookup id $< gets jitAddresses
           return $ (fromIntegral . ptrToIntPtr . unsafeForeignPtrToPtr) $< val
-        register id ptr size = modifyF jitAddressesF (M.insert id ptr)
+        register id ptr size = modifying jitAddresses_ (M.insert id ptr)
 getAddressComp arch = getAddress arch lookup register
   where lookup id = (fst$<) $< M.lookup id $< gets compAddresses
         register id ptr size = do
-          n <- getF compTopF
-          modifyF compAddressesF (M.insert id (n,ptr))
-          modifyF compTopF (+size)
+          n <- getting compTop_
+          modifying compAddresses_ (M.insert id (n,ptr))
+          modifying compTop_ (+size)
 

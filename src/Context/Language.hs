@@ -48,7 +48,7 @@ internSym s e = runState (st $ BM.lookup s (symbolsL e)) e
   where st (Just id) = return id
         st _ = do
           i <- state createSym 
-          modifyF symsF (BM.insert s i)  
+          modifying syms_ (BM.insert s i)  
           return i
 
 envCast t = T.mapM (state . intern) t
@@ -69,7 +69,7 @@ importLanguage getImport loadImport imp = merge imp
       mergeLanguage imp l'
       loadImport l'
       return $ comp || recomp
-    mergeLanguage imp l' = doF languageF $ do
+    mergeLanguage imp l' = viewing language_ $ do
       let Language { symbolsL = syms' , languagesL = mods' , maxIDL = mi' } = l'
       mapM_ (state . internSym) $ BM.keys syms'
       Language { maxIDL = mi, symbolsL = syms } <- get

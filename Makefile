@@ -12,8 +12,14 @@ run: all
 install: all
 	cabal install
 
+replaceExpr:='s/ Data.Relation/ My.Data.Relation/'
+
 find:
-	grep -Rn 'trace' src
+	egrep -Rn '\bdebug\b' src
+replace:
+	find src -name '*.hs' | xargs sed -r $(replaceExpr)'g' -i
+try-replace:
+	find src -name '*.hs' | xargs sed -rn $(replaceExpr)'gp'
 stat:
 	@echo -n 'Line total: ' 
 	@find src -type f | xargs cat | wc -l

@@ -58,8 +58,8 @@ doCompile opts = case programs opts of
     interactive = void $ compileFile "/dev/stdin"
     compileProgram (language,root) = withDefaultContext entry $ do
       importLanguage compileLanguage (const $ return ()) language
-      l <- doF languageF get
-      rootSym <- stateF languageF $ internSym root
+      l <- viewing language_ get
+      rootSym <- viewState language_ $ internSym root
       getAddressComp (outputArch opts) rootSym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
       top <- gets compTop

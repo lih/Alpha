@@ -1,4 +1,4 @@
-module Options (Architecture(..),Action(..),Settings(..),Format(..),helpMsg,getSettings) where
+module Options (Action(..),Settings(..),Format(..),helpMsg,getSettings) where
 
 import Specialize.Architecture
 import System.Console.GetOpt
@@ -28,7 +28,6 @@ data Settings = Settings {
 
 splitArg s = case break (==':') s of
   (a,':':b) -> a:splitArg b
-  ("","") -> []
   (a,"") -> [a]
 
 options = 
@@ -58,7 +57,7 @@ options =
         glue [a,_] t = a++" or "++t
         glue (a:_) t = a++", "++t
         sep = Option [] [] undefined "-----------------"
-helpMsg = usageInfo "Usage: alpha (<option>|<language>:<symbol>)..." options
+helpMsg = usageInfo "Usage: alpha <option>... <language>:<symbol>..." options
 
 defaultSettings progs = Settings Compile ["."] "." (map readProg progs) hostArch Elf64
   where readProg p = case splitArg p of

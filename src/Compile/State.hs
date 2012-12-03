@@ -3,7 +3,7 @@ module Compile.State(
   module Context, 
   module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
-  depGraphF,infoStackF,importsF,
+  depGraph_,infoStack_,imports_,
   newVar,
   pushInfo,popInfo,topInfo,withInfo,withTopInfo,
   defaultState,
@@ -18,6 +18,8 @@ module Compile.State(
   (*>>=),(*>>)
   )
   where
+
+import Control.Category ((>>>))
 
 import PCode
 import My.Control.Monad.State
@@ -52,22 +54,22 @@ data CompileState = CS {
   }
                   deriving Show
 
-depGraphF = Field (depGraph,(\g cs -> cs { depGraph = g }))
-infoStackF = Field (infoStack,(\l cs -> cs { infoStack = l }))
-importsF = Field (imports,(\l cs -> cs { imports = l }))
+depGraph_ = View (depGraph,(\g cs -> cs { depGraph = g }))
+infoStack_ = View (infoStack,(\l cs -> cs { infoStack = l }))
+imports_ = View (imports,(\l cs -> cs { imports = l }))
 
 defaultState = CS [] [] G.empty
 singleCode n = ([n],[n])
 isBackEdge (_,BranchAlt Backward _) = True
 isBackEdge _ = False
 
-getSymName = lift . gets . L.lookupSymName
-getSymVal s = lift $ getsF valsF $ M.lookup s
-newVar     = lift $ state createSym
+getSymName  = lift . gets . L.lookupSymName
+getSymVal s = lift $ getting (vals_ >>> f_ (M.lookup s))
+newVar      = lift $ state createSym
 
-pushInfo        = modifyF infoStackF . (:)
-popInfo         = stateF infoStackF (\(h:t) -> (h,t))
-topInfo         = getsF infoStackF head
+pushInfo        = modifying infoStack_ . (:)
+popInfo         = viewState infoStack_ (\(h:t) -> (h,t))
+topInfo         = getting (infoStack_ >>> f_ head)
 withTopInfo i x = pushInfo i >> x >>= \v -> popInfo >> return v
 withInfo f      = popInfo >>= \i -> f i >>= \ret -> pushInfo i >> return ret
 
@@ -75,14 +77,14 @@ mkNoop        = createNode (Instr Noop)
 nullCode      = nullCodeVal NullVal
 nullCodeVal v = mkNoop >>= \n -> return (v,singleCode n)
 
-getNodeList  = getsF depGraphF nodeList
-getContext n = getsF depGraphF (G.getContext n)
+getNodeList  = getting (depGraph_ >>> f_ nodeList)
+getContext n = getting (depGraph_ >>> f_ (G.getContext n))
 
-createNode x       = stateF depGraphF (G.insertNode x)
-deleteNode n       = modifyF depGraphF (G.deleteNode n)
-modifyNode n f     = modifyF depGraphF (G.modifyNode n f)
-createEdge x n1 n2 = modifyF depGraphF (G.insertEdge x n1 n2)
-deleteEdge n1 n2   = modifyF depGraphF (G.deleteEdge n1 n2)
+createNode x       = viewState depGraph_ (G.insertNode x)
+deleteNode n       = modifying depGraph_ (G.deleteNode n)
+modifyNode n f     = modifying depGraph_ (G.modifyNode n f)
+createEdge x n1 n2 = modifying depGraph_ (G.insertEdge x n1 n2)
+deleteEdge n1 n2   = modifying depGraph_ (G.deleteEdge n1 n2)
 
 makeTimeDep a b = do
   (v,(_in,_out)) <- a
