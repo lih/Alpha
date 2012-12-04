@@ -4,6 +4,7 @@ import Specialize.Architecture
 import System.Console.GetOpt
 import Data.Maybe
 import My.Data.List
+import Format
 
 data Flag = Help | Version
           | SourceDir FilePath 
@@ -13,8 +14,6 @@ data Flag = Help | Version
           | Format Format
           deriving Show
 data Action = PrintHelp | PrintVersion | Compile
-            deriving Show
-data Format = Elf64 | Raw Int
             deriving Show
 data Settings = Settings {
   action      :: Action,
@@ -49,8 +48,8 @@ options =
   ]
   where str2arch s = fromMaybe (error $ "Invalid architecture name "++s) $ lookup s $ zip archNames architectures
         str2fmt s = case splitArg s of
-          ["elf64"] -> Elf64
-          ["raw",n] -> Raw (read n)
+          ["elf64"] -> elf64
+          ["raw",n] -> raw (read n)
           _ -> error ("Invalid format argument "++show s)
         archNames = map archName architectures
         glue [a] _ = a
@@ -59,7 +58,7 @@ options =
         sep = Option [] [] undefined "-----------------"
 helpMsg = usageInfo "Usage: alpha <option>... <language>:<symbol>..." options
 
-defaultSettings progs = Settings Compile ["."] "." (map readProg progs) hostArch Elf64
+defaultSettings progs = Settings Compile ["."] "." (map readProg progs) arch_host defaultFormat
   where readProg p = case splitArg p of
           [l,s] -> (l,s)
           _ -> error $ "Ill-formed argument '"++p++"'. Should be of the form <language>:<symbol>"

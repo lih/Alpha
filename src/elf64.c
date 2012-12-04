@@ -1,54 +1,55 @@
-#include <unistd.h>
 #include <libelf.h>
+#include <stdlib.h>
 
 #define SETSTRUCT(v,t,vals...) { t tmp = vals; v = tmp; }
-#define H_SIZE (sizeof(Elf64_Ehdr)+sizeof(Elf64_Phdr))
-#define ENTRY (H_SIZE+(1<<21))
 
 typedef unsigned char byte;
 
-int entryAddress() { return ENTRY; }
+typedef struct {
+    Elf64_Ehdr eh;
+    Elf64_Phdr pht[1];
+} Elf64H;
+#define H_SIZE (sizeof(Elf64H))
+#define ENTRY (H_SIZE+(1<<21))
+int elf64_entry() { return ENTRY; }
+int elf64_headerSize() { return H_SIZE; }
+byte* elf64_headerCons(int dataSize) {
+    Elf64H* ret = malloc(sizeof(Elf64H));
 
-
-void writeElf(int fd,byte* data,int dataSize) {
-   Elf64_Ehdr eh;    Elf64_Phdr pht[1];
-
-   SETSTRUCT(eh,Elf64_Ehdr,{
-      .e_ident = { 
-         ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3,
-         ELFCLASS64, ELFDATA2LSB,
-         EV_CURRENT,
-         ELFOSABI_NONE, 0,
-         0
-      },
-      .e_type      = ET_EXEC,
-      .e_machine   = EM_X86_64,
-      .e_version   = EV_CURRENT,
-      .e_entry     = ENTRY,
-      .e_phoff     = sizeof(Elf64_Ehdr),
-      .e_shoff     = 0,
-      .e_flags     = 0,
-      .e_ehsize    = sizeof(Elf64_Ehdr),
-      .e_phentsize = sizeof(Elf64_Phdr),
-      .e_phnum     = 1,
-      .e_shentsize = 0,
-      .e_shnum     = 0,
-      .e_shstrndx  = SHN_UNDEF
-   });
-   SETSTRUCT(pht[0],Elf64_Phdr,{ 
-      .p_type   = PT_LOAD,
-      .p_offset = H_SIZE,
-      .p_vaddr  = ENTRY,
-      .p_paddr  = 0,
-      .p_filesz = dataSize,
-      .p_memsz  = dataSize,
-      .p_flags  = PF_R | PF_W | PF_X,
-      .p_align  = 1<<21
-   });
+    SETSTRUCT(ret->eh,Elf64_Ehdr,{
+       .e_ident = { 
+           ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3,
+           ELFCLASS64, ELFDATA2LSB,
+           EV_CURRENT,
+           ELFOSABI_NONE, 0,
+           0
+       },
+       .e_type      = ET_EXEC,
+       .e_machine   = EM_X86_64,
+       .e_version   = EV_CURRENT,
+       .e_entry     = ENTRY,
+       .e_phoff     = sizeof(Elf64_Ehdr),
+       .e_shoff     = 0,
+       .e_flags     = 0,
+       .e_ehsize    = sizeof(Elf64_Ehdr),
+       .e_phentsize = sizeof(Elf64_Phdr),
+       .e_phnum     = 1,
+       .e_shentsize = 0,
+       .e_shnum     = 0,
+       .e_shstrndx  = SHN_UNDEF
+    });
+    SETSTRUCT(ret->pht[0],Elf64_Phdr,{ 
+       .p_type   = PT_LOAD,
+       .p_offset = H_SIZE,
+       .p_vaddr  = ENTRY,
+       .p_paddr  = 0,
+       .p_filesz = dataSize,
+       .p_memsz  = dataSize,
+       .p_flags  = PF_R | PF_W | PF_X,
+       .p_align  = 1<<21
+    });
     
-   write(fd,&eh,sizeof(eh));
-   write(fd,&pht,sizeof(pht));
-   write(fd,data,dataSize);
+    return (byte*)ret;
 }
 
 /* 

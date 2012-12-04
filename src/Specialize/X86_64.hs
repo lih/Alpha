@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns, TupleSections, ParallelListComp, ImplicitParams, NoMonomorphismRestriction #-}
-module Specialize.X86_64(arch_x86_64,execStub,initStub,callStub0,callStub1) where
+module Specialize.X86_64(arch,execStub,initStub,callStub0,callStub1) where
 
 import Control.Arrow
 import Control.Monad.Reader
@@ -29,7 +29,7 @@ import qualified Data.Set as S
 import qualified My.Data.Relation as R
 import qualified My.Data.SetBy as SB
 
-arch_x86_64 = Arch "x86_64" defSize defaults compile
+arch = Arch "x86_64" defSize defaults compile
 
 allocRegs = filter isAllocReg registers
 isAllocReg r = (r>=rax && r<rsp) || (r>rdi && r<=r15)

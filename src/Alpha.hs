@@ -10,7 +10,7 @@ import qualified Data.Bimap as BM
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Serialize as Ser
-import Elf (writeElf,entryAddress)
+import Format
 import Foreign hiding (void)
 import My.Control.Monad
 import My.Control.Monad.State hiding ((<.>))
@@ -39,9 +39,6 @@ execute s = case action s of
   PrintVersion -> printVersion
   Compile -> doCompile s
 
-formatEntry Elf64 = entryAddress
-formatEntry (Raw n) = n
-
 printHelp = putStrLn helpMsg
 printVersion = putStrLn $ "Alpha version "++showVersion version
 
@@ -64,18 +61,16 @@ doCompile opts = case programs opts of
       let sTree = concat $ parseAlpha "/dev/stdin" str
       mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (Group []:sTree)
       putStrLn "\rGoodbye !"
-    compileProgram (language,root) = withDefaultContext entry $ do
+    compileProgram (language,entryName) = withDefaultContext entry $ do
       importLanguage compileLanguage (const $ return ()) language
       l <- viewing language_ get
-      rootSym <- viewState language_ $ internSym root
-      getAddressComp (outputArch opts) rootSym
+      entrySym <- viewState language_ $ internSym entryName
+      getAddressComp (outputArch opts) entrySym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
       top <- gets compTop
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                        | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-      case outputFmt opts of
-        Elf64 -> writeElf root contents
-        Raw _ -> B.writeFile root contents
+      writeFormat (outputFmt opts) entryName contents
     compileLanguage force name = do
       let langFile = languageFile name
       source <- findSource name

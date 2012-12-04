@@ -12,7 +12,7 @@ run: all
 install: all
 	cabal install
 
-replaceExpr:='s/ Data.Relation/ My.Data.Relation/'
+replaceExpr:='s/\bElf\b/Format/'
 
 find:
 	egrep -Rn '\bundefined\b' src

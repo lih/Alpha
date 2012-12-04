@@ -16,7 +16,7 @@ import Data.ByteString.Unsafe
 import Data.Functor.Identity
 import Data.IORef
 import Data.Maybe
-import Elf(entryAddress)
+import Format
 import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
 import Foreign.C
 import Foreign.ForeignPtr.Unsafe
@@ -207,7 +207,7 @@ getAddress arch lookup register = withRef compAddrRef getAddr . getAddr
           withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
 
-getAddressJIT = getAddress hostArch lookup register
+getAddressJIT = getAddress arch_host lookup register
   where lookup id = do
           val <- M.lookup id $< gets jitAddresses
           return $ (fromIntegral . ptrToIntPtr . unsafeForeignPtrToPtr) $< val
