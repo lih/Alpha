@@ -15,7 +15,7 @@ install: all
 replaceExpr:='s/ Data.Relation/ My.Data.Relation/'
 
 find:
-	egrep -Rn '\bdebug\b' src
+	egrep -Rn '\bundefined\b' src
 replace:
 	find src -name '*.hs' | xargs sed -r $(replaceExpr)'g' -i
 try-replace:

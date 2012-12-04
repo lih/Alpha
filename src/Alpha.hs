@@ -5,6 +5,7 @@ import Data.ByteString.Unsafe
 import Data.List
 import Data.Maybe
 import Data.Ord
+import Data.Version
 import qualified Data.Bimap as BM
 import qualified Data.ByteString as B
 import qualified Data.Map as M
@@ -15,11 +16,13 @@ import My.Control.Monad
 import My.Control.Monad.State hiding ((<.>))
 import My.Prelude
 import Options
+import Paths_alpha (version)
 import PCode
 import Serialize
 import Specialize
 import Syntax
 import Syntax.Parse
+import System.IO
 import System.Directory
 import System.Environment as SE
 import System.FilePath
@@ -39,9 +42,8 @@ execute s = case action s of
 formatEntry Elf64 = entryAddress
 formatEntry (Raw n) = n
 
-version = "1.0"
 printHelp = putStrLn helpMsg
-printVersion = putStrLn $ "Alpha version "++version
+printVersion = putStrLn $ "Alpha version "++showVersion version
 
 newtype Str = Str String
 instance Show Str where show (Str s) = s
@@ -52,10 +54,16 @@ doCompile opts = case programs opts of
   where
     entry = formatEntry $ outputFmt opts
     languageFile language = languageDir opts</>language<.>"l"
-    findSource language = findM doesFileExist (concat [[base<.>"a",base] | dir <- sourceDirs opts
-                                                                         , let base = dir</>language])
+    findSource language = findM doesFileExist [file | dir <- sourceDirs opts
+                                                    , let base = dir</>language
+                                                    , file <- [base<.>"a",base]]
 
-    interactive = void $ compileFile "/dev/stdin"
+    interactive = withDefaultContext entry $ do
+      putStrLn $ "Alpha, version "++showVersion version++". Type alpha/help() for help on Alpha invocation. ^D to exit."
+      str <- getContents
+      let sTree = concat $ parseAlpha "/dev/stdin" str
+      mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (Group []:sTree)
+      putStrLn "\rGoodbye !"
     compileProgram (language,root) = withDefaultContext entry $ do
       importLanguage compileLanguage (const $ return ()) language
       l <- viewing language_ get
@@ -80,17 +88,16 @@ doCompile opts = case programs opts of
              B.writeFile langFile (Ser.encode lang)
              return lang
       return (not skip,l)
-
-    compileFile src = withDefaultContext entry $ (>> gets language) $ do
-      str <- readFile src
-      let sTree = concat $ parseAlpha src str
-      init <- mapM compileExpr sTree
-      languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
-      where compileExpr expr = do
-              symExpr <- languageState $ envCast expr
-              trExpr <- doTransform symExpr
-              (code,imports) <- languageState $ compile [] Nothing trExpr
-              mapM_ (importLanguage compileLanguage (mapM_ execCode . initializeL)) imports
-              execCode code
-              return code
+        where compileFile src = withDefaultContext entry $ (>> gets language) $ do
+                str <- readFile src
+                let sTree = concat $ parseAlpha src str
+                init <- mapM compileExpr sTree
+                languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
+    compileExpr expr = do
+      symExpr <- languageState $ envCast expr
+      trExpr <- doTransform symExpr
+      (code,imports) <- languageState $ compile [] Nothing trExpr
+      mapM_ (importLanguage compileLanguage (mapM_ execCode . initializeL)) imports
+      execCode code
+      return code
 

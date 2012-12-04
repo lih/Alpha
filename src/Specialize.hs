@@ -27,7 +27,6 @@ import qualified Data.Set as S
 
 import System.IO.Unsafe
 import My.Prelude
-import Debug.Trace
 
 worldID = ID (-1)
 
@@ -53,10 +52,10 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
       where
         getsi f = gets $ \a i -> f (a!i)
         puti i e = modify $ (//[(i,e)])
-        nextFuture i f = snd4 $ runInstr i undefined f (const Nothing)
+        nextFuture i f = snd4 $ runInstr i (error "undefined past") f (const Nothing)
         gens = array bounds $ zip (flatten codeTree) [0..]
         gens' = array bounds $ zip [0..] (flatten codeTree)
-        getPast g i | g == maximum (filter (<=(gens!i)) $ map (gens!) $ prevs i) = Nothing
+        getPast g i | (case filter (<=(gens!i)) [gens!j | j <- prevs i] of [] -> False ; l -> g==maximum l) = Nothing
                     | otherwise = Just $ fst $ instrs!i
         instrs = array bounds $ flatten $ descend desc past codeTree
           where desc i p = ((i,(p,c)),p')

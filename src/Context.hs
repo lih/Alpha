@@ -6,31 +6,32 @@ module Context(module Context.Types
               ,doTransform ,getAddressComp
               ,execCode) where
 
-import Bindings.Posix.Unistd
 import Bindings.Posix.Sys.Mman
-import Context.Language as Lang
+import Bindings.Posix.Unistd
 import Context.Language
+import Context.Language as Lang
 import Context.Types
-import qualified Data.ByteString as B
-import Data.ByteString.Unsafe
 import Data.ByteString.Internal
+import Data.ByteString.Unsafe
 import Data.Functor.Identity
 import Data.IORef
 import Data.Maybe
-import qualified Data.Map as M
 import Elf(entryAddress)
+import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
 import Foreign.C
 import Foreign.ForeignPtr.Unsafe
-import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
 import ID
 import My.Control.Monad
 import My.Control.Monad.State
+import My.Prelude
+import Options
 import PCode
 import Specialize
 import Specialize.Architecture
 import Syntax
 import System.IO.Unsafe (unsafePerformIO)
-import My.Prelude
+import qualified Data.ByteString as B
+import qualified Data.Map as M
 
 foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
 
@@ -43,7 +44,7 @@ withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> wr
 funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
 
 compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
-contextRef = unsafePerformIO $ newIORef (undefined :: Context)
+contextRef = unsafePerformIO $ newIORef (error "Undefined context" :: Context)
 instance MonadState Context IO where
   get = readIORef contextRef
   put = writeIORef contextRef
@@ -87,12 +88,17 @@ foreign export ccall "free_" free_ :: Ptr() -> IO ()
 foreign import ccall "&free_" free_ptr :: FunPtr (Ptr() -> IO ())
 free_ = free
 
+foreign export ccall "printHelp_" printHelp_ :: IO ()
+foreign import ccall "&printHelp_" printHelp_ptr :: FunPtr (IO ())
+printHelp_ = Prelude.putStrLn helpMsg
 foreign export ccall "printOK_" printOK_ :: IO ()
 foreign import ccall "&printOK_" printOK_ptr :: FunPtr (IO ())
 printOK_ = Prelude.putStrLn "OK"
 foreign export ccall "printNum_" printNum_ :: Int -> IO ()
 foreign import ccall "&printNum_" printNum_ptr :: FunPtr (Int -> IO ())
 printNum_ n = print (intPtrToPtr $ fromIntegral n)
+
+
 
 initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alter"  ,Left $ Axiom XAlter),
@@ -122,6 +128,7 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/allocate"      , Right $ exportAlpha callStub1 allocate_ptr), 
   ("alpha/free"          , Right $ exportAlpha callStub1 free_ptr), 
   
+  ("alpha/help"          , Right $ exportAlpha callStub1 printHelp_ptr),
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
   ]
