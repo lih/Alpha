@@ -29,7 +29,8 @@ splitArg s = case break (==':') s of
   (a,':':b) -> a:splitArg b
   (a,"") -> [a]
 
-options = 
+
+options = map (\(Option a b c d) -> Option a b c (wrap 60 d))
   [Option ['h','?'] ["help"] (NoArg Help) 
    "prints usage information"
   ,Option ['v'] ["version"] (NoArg Version) 
