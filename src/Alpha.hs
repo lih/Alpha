@@ -63,9 +63,9 @@ doCompile opts = case programs opts of
       putStrLn "\rGoodbye !"
     compileProgram (language,entryName) = withDefaultContext entry $ do
       importLanguage compileLanguage (const $ return ()) language
-      l <- viewing language_ get
+      l <- getting language_
       entrySym <- viewState language_ $ internSym entryName
-      getAddressComp (outputArch opts) entrySym
+      _ <- getAddressComp (outputArch opts) entrySym
       (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
       top <- gets compTop
       contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)

@@ -1,5 +1,5 @@
 name:           alpha
-version:        1.0.2
+version:        1.0.3
 synopsis:       A compiler for the Alpha language
 description:    Alpha is a programming language that aims at being very simple and 
                 low-level, so as to be efficient, while at the same time
@@ -24,6 +24,6 @@ executable alpha
   main-is:        Alpha.hs
   other-modules:  Alpha Compile Compile.State Compile.Utils Context Context.Language Context.Types Format ID My.Control.Monad My.Control.Monad.RWTL My.Control.Monad.State My.Data.Either My.Data.Graph My.Data.List My.Data.Relation My.Data.SetBy My.Data.Tree My.Prelude Options PCode PCode.Builtin PCode.Instruction PCode.Value Serialize Specialize Specialize.Architecture Specialize.Frame Specialize.Types Specialize.X86_64 Specialize.X86_64.Binary Syntax Syntax.Parse Translate
   hs-source-dirs: src
-  c-sources:      src/elf64.c
+  c-sources:      src/formats.c
 
 

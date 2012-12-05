@@ -43,12 +43,13 @@ options =
   ,Option ['a'] ["architecture"] (ReqArg (Architecture . str2arch) "<arch>") 
    $ "specializes for <arch> instead of the host architecture (<arch> can be one of "++foldr glue "" (tails archNames)++")"
   ,Option ['f'] ["format"] (ReqArg (Format . str2fmt) "<fmt>")
-   $ "writes the output programs in the specified format (<fmt> can be one of elf64 or \n"
+   $ "writes the output programs in the specified format (<fmt> can be one of elf64, pe or \n"
    ++"raw:<n> where <n> is the start address)"
   ]
   where str2arch s = fromMaybe (error $ "Invalid architecture name "++s) $ lookup s $ zip archNames architectures
         str2fmt s = case splitArg s of
           ["elf64"] -> elf64
+          ["pe"] -> pe
           ["raw",n] -> raw (read n)
           _ -> error ("Invalid format argument "++show s)
         archNames = map archName architectures
