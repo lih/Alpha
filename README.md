@@ -36,15 +36,16 @@ compile your Alpha programs with that simple command:
 where `<symbol>` and `<language>` are respectively the name of the entry symbol to your
 program and the name of the language in which the compiler might find that symbol. 
 
-Alpha also has an interactive mode that you may use by calling it without arguments. That
-mode isn't very talkative yet so don't be alarmed if you stumble upon it by chance and
-just hit Ctrl+D (or you might enter some commands. Just because it doesn't echo anything
-doesn't mean it doesn't work :-) )
+Alpha also has an interactive mode that you may use by calling it without arguments. This
+interactive mode is _not_ a REPL in the purest sense of the term as it doesn't P anything.
+You may run arbitrary code within it, though, and that's what matters. Implementing the P
+part of a REPL can (and should) be done with the language and will not be integrated into
+the compiler.
 
 For more information about exactly what languages and symbols are, you might want to check
 out the [Alpha Lang Documentation][alpha-doc]. If you want more immediate help on how to
-run Alpha, you may also run the command 'alpha -h' which shows you the options supported
-by your version of Alpha.
+run Alpha, you may also run the command `alpha -h` which shows you the options supported
+by your version of Alpha (which you can check out by running `alpha -v`)
 
 [alpha-lang]: http://www.alpha-lang.info/ "The Alpha Lang Website"
 [alpha-doc]: http://www.alpha-lang.info/way/spec.html "Learn About Alpha"
