@@ -16,7 +16,7 @@ fis          :: (Integral a,Num b) => [a] -> [b]
 bytes        :: (Bits a,Integral a,Num b) => a -> [b]
 defSize      :: Num a => a
 argBytesWide :: Bool -> Int -> Int -> (Maybe Integer) -> ([Word8],[Word8])
-codeFun      :: [(Int,(Word8,Int,Int))] -> (Int,IO Integer) -> Maybe (Word8,Int,Int,IO [Word8])
+codeFun      :: [(Int,(Word8,Int,Int))] -> Either Integer (Int,IO Integer) -> Maybe (Word8,Int,Int,IO [Word8])
 
 fi = fromIntegral ; fis = fmap fromIntegral
 
@@ -33,7 +33,7 @@ registers@[rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8,r9,r10,r11,r12,r13,r14,r15] = [0..
           tellCode [0xc3]
         alphaStub loadArgs f = do
           loadArgs
-          movi rsi (withSize (f :: Integer))
+          movi rsi (Left f)
           call rsi
           tellCode [0xc3]
         saved = rbx:rbp:[r12..r15]
@@ -57,6 +57,8 @@ numSize n | n>=0 = numSize 64 n
 withSize n = (numSize n,return $ fi n)
 fromFields fs = foldl1 xor (zipWith shiftL (map (fst) fs) (scanl (+) 0 $ map snd fs))
 bytes = fis . iterate (`shiftR`8)
+log2n n = elemIndex n $ takeWhile (<=n) $ iterate (2*) 1
+pow2 i = setBit 0 i
 
 fromBytesN n ml = BC (n,n,liftM B.pack ml)
 fromBytes c = fromBytesN (length c) (return c)
@@ -83,13 +85,14 @@ opi codes def d a n = case codes n of
     where (pre,suf) = argBytes r d Nothing
           pref = pre++[code]++suf
   Nothing -> movi rsi n >> op def d a rsi
-codeFun codes (size,n) = listToMaybe [(code,r,count,imm count) | (s,(code,count,r)) <- codes, s>=size]
+codeFun codes val = listToMaybe [(code,r,count,imm count) | (s,(code,count,r)) <- codes, s>=size]
   where imm s = liftM (take s . bytes) n
-                      
+        (size,n) = either withSize id val
+                
 mov d s | d==s = return ()
         | otherwise = tellCode (pre++[0x8b]++suf)
   where (pre,suf) = argBytes d s Nothing
-movi d (0,_) = bwxorrr d d d
+movi d (Left 0) = bwxorrr d d d
 movi d n = tell $ fromBytesN (length pref+s) (liftM (pref++) imm)
   where (code,r,s,imm) = fromJust $ codeFun [(31,(0xC7,4,0)),(64,(0xB8`xor`(fi d.&.7),8,0))] n
         (pre,suf) | code==0xC7 = argBytes 0 d Nothing
@@ -101,24 +104,28 @@ zxtnd r s = case (s :: Int) of
   1 -> tellCode (pre++[0x0f,0xb6]++post)
   2 -> tellCode (pre++[0x0f,0xb7]++post)
   _ -> shli r r sz >> shri r r sz
-    where sz = withSize $ 8*(defSize-s)
+    where sz = Left (fi $ 8*defSize-s)
   where (pre,post) = argBytes r r Nothing
 sxtnd r s = case (s :: Int) of
   1 -> tellCode (pre++[0x0f,0xbe]++post)
   2 -> tellCode (pre++[0x0f,0xbf]++post)
   4 -> tellCode (pre++[0x63]++post)
   _ -> shli r r sz >> sari r r sz
-    where sz = withSize $ 8*(defSize-s)
+    where sz = Left (fi $ 8*defSize-s)
   where (pre,post) = argBytes r r Nothing
   
 setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r 1
   where (pre,post) = argBytesWide False 0 r Nothing
 
-shli = opi (codeFun [(8,(0xC1,1,4))]) undefined
-shri = opi (codeFun [(8,(0xC1,1,5))]) undefined
-sari = opi (codeFun [(8,(0xC1,1,7))]) undefined
+withSpecial spe f d r (Left n) = fromMaybe (f d r (Left n)) $ spe d r n
+withSpecial _ f d r v = f d r v
+ignoreZero = const $ const $ flip lookup [(0,return ())]
+
+shli = withSpecial ignoreZero $ opi (codeFun [(8,(0xC1,1,4))]) undefined
+shri = withSpecial ignoreZero $ opi (codeFun [(8,(0xC1,1,5))]) undefined
+sari = withSpecial ignoreZero $ opi (codeFun [(8,(0xC1,1,7))]) undefined
 rori d s n | n==0||n==64 = return ()
-           | otherwise = opi (codeFun [(8,(0xC1,1,1))]) undefined d s (withSize n)
+           | otherwise = opi (codeFun [(8,(0xC1,1,1))]) undefined d s (Left n)
 ld d (_,_,0) = return ()
 ld d (s,n,size) = load
   where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
@@ -133,7 +140,7 @@ ld d (s,n,size) = load
                                                   ,(2,([0x66],[0x8b]))
                                                   ,(1,([],[0x8a]))])
                 sh sz | fst||sz==8 = return ()
-                      | otherwise = shli d d (withSize (sz*8))
+                      | otherwise = shli d d (Left (sz*8))
 st (_,_,0) _ = return ()
 st (d,n,size) s = store
   where szs = maximumBy (comparing weight) $ permutations [sz | sz <- [8,4,2,1], sz.&.size /= 0]
@@ -153,10 +160,11 @@ st (d,n,size) s = store
 commOp c c' = (op c,opn,flip . opn)
   where opn = opi (codeFun c') c
 
-addri d r (0,_) = return ()
-addri d r v = addri' d r v
+addri = withSpecial ignoreZero addri'
 (addrr,addri',addir)      = commOp [0x03]      [(8,(0x83,1,0)),(32,(0x81,4,0))]
-(mulrr,mulri,mulir)       = commOp [0x0F,0xAF] [(8,(0x6B,1,0)),(64,(0x69,8,0))]
+mulri = withSpecial spe mulri'
+  where spe d r n = liftM (shli d r . Left . fi) $ log2n n
+(mulrr,mulri',mulir)       = commOp [0x0F,0xAF] [(8,(0x6B,1,0)),(64,(0x69,8,0))]
 (bwandrr,bwandri,bwandir) = commOp [0x23]      [(7,(0x83,1,4)),(31,(0x81,4,4))]
 (bworrr,bworri,bworir)    = commOp [0x0b]      [(7,(0x83,1,1)),(31,(0x81,4,1))]
 (bwxorrr,bwxorri,bwxorir) = commOp [0x33]      [(7,(0x83,1,6)),(31,(0x81,4,6))]
@@ -166,8 +174,7 @@ negr r = tellCode $ pre++[0xf7]++post
   where (pre,post) = argBytes 3 r Nothing
 subrr d a b | d==b = op [0x2b] d d a >> negr d
             | otherwise = op [0x2b] d a b
-subri d r (0,_) = return ()
-subri d r v = opi (codeFun [(8,(0x83,1,5)),(32,(0x81,4,5))]) [0x2b] d r v
+subri = withSpecial ignoreZero $ opi (codeFun [(8,(0x83,1,5)),(32,(0x81,4,5))]) [0x2b]
 subir d n a | d==a = subri d d n >> negr d
             | otherwise = movi d n >> subrr d d a
 
@@ -176,9 +183,8 @@ cmpri _ a = opi (codeFun codes) [0x3b] a a
   where codes = [(8,(0x83,1,7)),(32,(0x81,4,7))]
 cmpir _ n a = movi rsi n >> cmprr rsi rsi a
 
-calli pos (size,v) = tell $ fromBytesN 5 $ do
+calli pos (either withSize id -> (size,v)) = tell $ fromBytesN 5 $ do
   pos <- pos ; v <- v
-  -- putStrLn $ "calli: size="++show size++" pos="++show pos++" dest="++show v
   return $ [0xe8]++take 4 (bytes (v-fi pos-5))
 call r = tellCode $ pre++[0xff]++post
   where (pre,post) = argBytesWide False 2 r Nothing
@@ -187,5 +193,7 @@ opsCode (rr,ri,ir,ii) dest v v' = case (v,v') of
   (Left r,Left r') -> rr dest r r'
   (Left r,Right v) ->  ri dest r v
   (Right v,Left r) -> ir dest v r
-  (Right (s,n),Right (s',n')) -> movi dest (min s s',liftM2 ii n n')
+  (Right (Left n),Right (Left n')) -> movi dest (Left (ii n n'))
+  (Right v,Right v') -> movi dest (Right (min s s',liftM2 ii n n'))
+    where (s,n) = either withSize id v ; (s',n') = either withSize id v'
 

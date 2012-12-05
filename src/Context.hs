@@ -11,15 +11,17 @@ import Bindings.Posix.Unistd
 import Context.Language
 import Context.Language as Lang
 import Context.Types
+import Control.Category ((>>>))
 import Data.ByteString.Internal
 import Data.ByteString.Unsafe
 import Data.Functor.Identity
 import Data.IORef
+import Data.List
 import Data.Maybe
-import Format
 import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
 import Foreign.C
 import Foreign.ForeignPtr.Unsafe
+import Format
 import ID
 import My.Control.Monad
 import My.Control.Monad.State
@@ -30,6 +32,7 @@ import Specialize
 import Specialize.Architecture
 import Syntax
 import System.IO.Unsafe (unsafePerformIO)
+import qualified Data.Bimap as BM
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 
@@ -97,8 +100,11 @@ printOK_ = Prelude.putStrLn "OK"
 foreign export ccall "printNum_" printNum_ :: Int -> IO ()
 foreign import ccall "&printNum_" printNum_ptr :: FunPtr (Int -> IO ())
 printNum_ n = print (intPtrToPtr $ fromIntegral n)
-
-
+foreign export ccall "printList_" printList_ :: IO ()
+foreign import ccall "&printList_" printList_ptr :: FunPtr (IO ())
+printList_ = do
+  syms <- getting (language_ >>> syms_)
+  putStrLn $ intercalate " " (map fst $ BM.toList syms)
 
 initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alter"  ,Left $ Axiom XAlter),
@@ -128,7 +134,8 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/allocate"      , Right $ exportAlpha callStub1 allocate_ptr), 
   ("alpha/free"          , Right $ exportAlpha callStub1 free_ptr), 
   
-  ("alpha/help"          , Right $ exportAlpha callStub1 printHelp_ptr),
+  ("alpha/list"          , Right $ exportAlpha callStub0 printList_ptr),
+  ("alpha/help"          , Right $ exportAlpha callStub0 printHelp_ptr),
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 printOK_ptr),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 printNum_ptr)
   ]

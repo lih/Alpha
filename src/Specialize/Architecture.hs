@@ -1,8 +1,7 @@
 {-# LANGUAGE CPP #-}
 module Specialize.Architecture(Architecture(..)
-                              ,arch_x86_64,arch_host
-                              ,execStub,initStub,callStub0,callStub1
-                              ,architectures) where
+                              ,arch_host,arch_x86_64
+                              ,execStub,initStub,callStub0,callStub1) where
 
 import Specialize.Types
 import qualified Specialize.X86_64 as X86_64
@@ -18,9 +17,7 @@ instance Eq Architecture where
 instance Show Architecture where
   show a = "#<Arch:"++archName a++">"
 
-architectures = [arch_host,arch_x86_64]
 arch_host = Host.arch { archName = "host" }
-  
 arch_x86_64 = X86_64.arch
 
 execStub = unsafePerformIO Host.execStub

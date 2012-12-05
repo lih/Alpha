@@ -41,22 +41,27 @@ options =
    "writes and seeks all language files in <dir> (defaults to the current directory)"
   ,sep
   ,Option ['a'] ["architecture"] (ReqArg (Architecture . str2arch) "<arch>") 
-   $ "specializes for <arch> instead of the host architecture (<arch> can be one of "++foldr glue "" (tails archNames)++")"
+   $ "specializes for <arch> instead of the host architecture (<arch> can be one of "++glue archNames++")"
   ,Option ['f'] ["format"] (ReqArg (Format . str2fmt) "<fmt>")
-   $ "writes the output programs in the specified format (<fmt> can be one of elf64, pe or \n"
-   ++"raw:<n> where <n> is the start address)"
+   $ "writes the output programs in the specified format (<fmt> can be one of "++glue fmtNames++")"
   ]
-  where str2arch s = fromMaybe (error $ "Invalid architecture name "++s) $ lookup s $ zip archNames architectures
+  where sep = Option [] [] undefined "-----------------"
+        archNames = ["host","x86-64"]
+        str2arch s = case s of
+          "host" -> arch_host
+          "x86-64" -> arch_x86_64
+          _ -> error $ "Invalid architecture name "++show s
+        fmtNames = ["elf64","pe","raw:<n> where <n> is the start address"]
         str2fmt s = case splitArg s of
           ["elf64"] -> elf64
           ["pe"] -> pe
           ["raw",n] -> raw (read n)
-          _ -> error ("Invalid format argument "++show s)
-        archNames = map archName architectures
-        glue [a] _ = a
-        glue [a,_] t = a++" or "++t
-        glue (a:_) t = a++", "++t
-        sep = Option [] [] undefined "-----------------"
+          _ -> error $ "Invalid format argument "++show s
+        glue = foldr glue "" . tails
+          where glue [a] _ = a
+                glue [a,_] t = a++" or "++t
+                glue (a:_) t = a++", "++t
+        
 helpMsg = usageInfo "Usage: alpha <option>... <language>:<symbol>..." options
 
 defaultSettings progs = Settings Compile ["."] "." (map readProg progs) arch_host defaultFormat

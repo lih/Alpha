@@ -3,8 +3,6 @@
 
 typedef unsigned char byte;
 
-#pragma "-Wno-clobbered"
-
 #define SETSTRUCT(v,t,vals...) { t tmp = vals; v = tmp; }
 #define DEF_FORMAT(fmt,base,htype,init...)              \
     int const fmt##_HSIZE = sizeof(htype);              \
