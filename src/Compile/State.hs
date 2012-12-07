@@ -1,6 +1,6 @@
 {-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction, ViewPatterns #-}
 module Compile.State(
-  module Context, 
+  module Context.Types,
   module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
   depGraph_,infoStack_,imports_,
@@ -26,7 +26,7 @@ import My.Control.Monad.State
 import My.Control.Monad
 import ID
 import My.Data.Graph hiding (deleteEdge,deleteNode,getContext,empty)
-import Context
+import Context.Types
 import Context.Language as L
 
 import qualified My.Data.Graph as G

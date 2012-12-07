@@ -3,6 +3,7 @@ module Compile.Utils where
 
 import Control.Category ((>>>))
 import Compile.State as CS
+import Context.Language
 import Data.Array
 import Data.Function
 import Data.Maybe

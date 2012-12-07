@@ -16,8 +16,8 @@ sums = scanl (+) 0
 consume f [] = []
 consume f l = let (a,t) = f l in a:consume f t
 
-wrap n s = intercalate "\n" (consume group $ words s)
-  where group ws = last [(intercalate " " g,t)
+wrap words unwords n s = consume group $ words s
+  where group ws = last [(unwords g,t)
                         | g <- inits ws
                         | t <- tails ws
                         | sz <- map (subtract 1) $ sums (map ((1+) . length) ws), sz <= n]

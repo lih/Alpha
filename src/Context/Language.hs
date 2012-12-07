@@ -94,17 +94,17 @@ importLanguage getImport loadImport imp = merge imp
         exportsL   = exportsL l S.\\ M.keysSet newVals 
         }
           
-exportLanguage e = e {
-  symbolsL    = BM.filter exportNameP (symbolsL e),
+exportLanguage l = l {
+  symbolsL    = BM.filter exportNameP (symbolsL l),
   valuesL     = vals',
   aliasesL    = M.empty,
   equivsL     = M.empty,
   exportsL    = S.empty,
-  initializeL = translate trans (initializeL e)
+  initializeL = translate trans (initializeL l)
   }
   where set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
-        Language { exportsL = ex, equivsL = eqs } = e
-        vals' = M.map (translate trans) $ M.intersection (valuesL e) (set2Map ex)
+        Language { exportsL = ex, equivsL = eqs } = l
+        vals' = M.map (translate trans) $ M.intersection (valuesL l) (set2Map ex)
         trans s = fromMaybe s $ M.lookup s eqs
         refs = S.fromList $ concatMap references $ M.elems vals'
         exportNameP _ s = (S.member s ex || S.member s refs)

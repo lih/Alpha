@@ -7,6 +7,7 @@ import Foreign.Marshal.Alloc
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Unsafe as BU
 import Data.Monoid
+import System.Posix.Files
 
 data Format = F {
   formatName       :: String,
@@ -22,13 +23,16 @@ writeFormat fmt name dat = do
   hp <- formatHeaderCons fmt (B.length dat)
   h <- BU.unsafePackCStringLen (hp,formatHeaderSize fmt)
   B.writeFile name (h <> dat)
+  stat <- getFileStatus name
+  let (+) = unionFileModes
+  setFileMode name (ownerExecuteMode + groupExecuteMode + otherExecuteMode + fileMode stat)
 
-foreign import ccall "elf64_entry"      elf64_entry      :: Int
-foreign import ccall "elf64_headerSize" elf64_headerSize :: Int
-foreign import ccall "elf64_headerCons" elf64_headerCons :: Int -> IO (Ptr CChar)
-foreign import ccall "pe_entry"      pe_entry      :: Int
-foreign import ccall "pe_headerSize" pe_headerSize :: Int
-foreign import ccall "pe_headerCons" pe_headerCons :: Int -> IO (Ptr CChar)
+#define importFun(fun,t) foreign import ccall #fun fun :: t
+#define importFmt(fmt) importFun(fmt##_entry,Int) ; importFun(fmt##_headerSize,Int) ; importFun(fmt##_headerCons,Int -> IO (Ptr CChar)) ; fmt = F #fmt fmt##_entry fmt##_headerSize fmt##_headerCons
+
+raw entry = F ("raw:"++show entry) entry 0 (const $ return nullPtr)
+importFmt(elf64) ; importFmt(elf32) ; importFmt(exe)
+formats = [elf64,elf32,exe]
 
 #if x86_64_HOST_ARCH
 defaultFormat = elf64
@@ -36,8 +40,5 @@ defaultFormat = elf64
 defaultFormat = raw 0
 #endif
 
-elf64 = F "elf64" elf64_entry elf64_headerSize elf64_headerCons
-pe = F "pe" pe_entry pe_headerSize pe_headerCons
-raw entry = F ("raw("++show entry++")") entry 0 (const $ return nullPtr)
 
 

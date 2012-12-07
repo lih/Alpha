@@ -30,7 +30,7 @@ splitArg s = case break (==':') s of
   (a,"") -> [a]
 
 
-options = map (\(Option a b c d) -> Option a b c (wrap 60 d))
+options = map (\(Option a b c d) -> Option a b c (intercalate "\n" $ wrap words unwords 80 d))
   [Option ['h','?'] ["help"] (NoArg Help) 
    "prints usage information"
   ,Option ['v'] ["version"] (NoArg Version) 
@@ -47,17 +47,15 @@ options = map (\(Option a b c d) -> Option a b c (wrap 60 d))
    $ "writes the output programs in the specified format (<fmt> can be one of "++glue fmtNames++")"
   ]
   where sep = Option [] [] undefined "-----------------"
-        archNames = ["host","x86-64"]
-        str2arch s = case s of
-          "host" -> arch_host
-          "x86-64" -> arch_x86_64
-          _ -> error $ "Invalid architecture name "++show s
-        fmtNames = ["elf64","pe","raw:<n> where <n> is the start address"]
+        archNames = map archName architectures
+        str2arch s = fromMaybe err $ lookup s [(archName a,a) | a <- architectures]
+          where err = error $ "Invalid architecture name "++show s
+        fmtNames = map formatName formats++["raw:<n> where <n> is the start address"]
         str2fmt s = case splitArg s of
-          ["elf64"] -> elf64
-          ["pe"] -> pe
           ["raw",n] -> raw (read n)
-          _ -> error $ "Invalid format argument "++show s
+          [s] -> fromMaybe err $ lookup s [(formatName f,f) | f <- formats]
+          _ -> err
+          where err = error $ "Invalid format argument "++show s
         glue = foldr glue "" . tails
           where glue [a] _ = a
                 glue [a,_] t = a++" or "++t

@@ -15,7 +15,7 @@ install: all
 replaceExpr:='s/\bElf\b/Format/'
 
 find:
-	egrep -Rn '\bundefined\b' src
+	egrep -Rn 'import Context' src
 replace:
 	find src -name '*.hs' | xargs sed -r $(replaceExpr)'g' -i
 try-replace:

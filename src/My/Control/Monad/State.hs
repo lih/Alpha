@@ -1,11 +1,9 @@
 {-# LANGUAGE TupleSections, NoMonomorphismRestriction #-}
-module My.Control.Monad.State(
-  module Control.Monad.State, 
-  View(..),
-  viewState,viewing,modifying,getting,putting,
-  fst_,snd_,id_,f_,on_,
-  withState
-  ) where
+module My.Control.Monad.State(module Control.Monad.State
+                             ,View(..)
+                             ,viewState,viewing,modifying,getting,putting
+                             ,fst_,snd_,id_,f_,on_
+                             ,withState) where
 
 import Prelude hiding ((.),id)
 import Control.Monad.State hiding (withState)

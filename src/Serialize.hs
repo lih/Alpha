@@ -9,7 +9,7 @@ import My.Control.Monad
 import Data.Bimap as BM
 import ID
 import PCode
-import Context as C
+import Context.Types as C
 
 deriving instance Generic ValType
 deriving instance Generic PCode.Value
