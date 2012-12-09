@@ -72,7 +72,8 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/name-symbol"   , Right $ exportAlpha callStub1 alpha_nameSym),
 
   ("alpha/set-transform" , Right $ exportAlpha callStub1 alpha_setTransform),    
-
+  ("alpha/reset"         , Right $ exportAlpha callStub0 alpha_reset),    
+  
   ("alpha/allocate"      , Right $ exportAlpha callStub1 alpha_allocate), 
   ("alpha/free"          , Right $ exportAlpha callStub1 alpha_free), 
   
@@ -108,6 +109,8 @@ ALPHA_EXPORT(printList,IO()) = do
   syms <- getting (language_ >>> syms_)
   putStrLn $ intercalate " " (map fst $ BM.toList syms)
 ALPHA_EXPORT(printLang,IO()) = getting language_ >>= print
+
+ALPHA_EXPORT(reset,IO()) = gets compTop >>= put . initialContext
 
 compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 contextRef = unsafePerformIO $ newIORef (error "Undefined context" :: Context)

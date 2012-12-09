@@ -110,18 +110,18 @@ specialize arch env (Code args code retVar) = (sum sizes,B.concat $< sequence co
                                                , s <- S.toList $ clobbers i ref
                                                , s' <- bindSyms bv]
                     next i r (Op BCall d (_:args)) = insertManyA r assocs
-                      where assocs = [a | ref <- d : argRefs i args
+                      where assocs = [a | ref <- S.toList (argsRefs i args)
                                         , v <- S.toList $ clobbers i ref
                                         , a <- [(v,worldID),(v,v)]]
                     next _ r _ = r
                     insertManyA r as = insertManyR r [a | (x,y) <- as, a <- [(x,y),(y,x)]]
             lookupRefs v r = ifEmpty (S.singleton worldID) $ R.lookupRan v r
-            argRefs i vs = S.toList $ S.fromList [s | SymVal Address s <- vs]
+            argsRefs i vs = S.fromList [s | SymVal Address s <- vs]
                            <> S.unions [references i s | SymVal Value s <- vs]
             references i v = lookupRefs v (referencesA!i)
-            referencesA = treeArray next $ insertManyR R.empty [(s,worldID) | arg <- args, s <- bindSyms arg]
-              where next i r (Op _ v vs) = insertManyR r' (map (v,) $ argRefs i vs)
-                      where r' = foldr (uncurry R.delete) r [(v,v') | v' <- S.toList $ R.lookupRan v r]
+            referencesA = treeArray next $ R.setDom worldID (S.fromList $ concatMap bindSyms args) R.empty
+              where next i r (Op b v vs) = R.setRan v (argsRefs i vs <> world) r
+                      where world = if b==BCall then S.singleton worldID else S.empty
                     next _ r _ = r
 
 ifEmpty def s | S.null s = def

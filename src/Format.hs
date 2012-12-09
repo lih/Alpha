@@ -27,11 +27,11 @@ writeFormat fmt name dat = do
   let (+) = unionFileModes
   setFileMode name (ownerExecuteMode + groupExecuteMode + otherExecuteMode + fileMode stat)
 
-#define importFun(fun,t) foreign import ccall #fun fun :: t
-#define importFmt(fmt) importFun(fmt##_entry,Int) ; importFun(fmt##_headerSize,Int) ; importFun(fmt##_headerCons,Int -> IO (Ptr CChar)) ; fmt = F #fmt fmt##_entry fmt##_headerSize fmt##_headerCons
+#define IMPORT_FUN(fun,t) foreign import ccall #fun fun :: t
+#define IMPORT_FORMAT(fmt) IMPORT_FUN(fmt##_entry,Int) ; IMPORT_FUN(fmt##_headerSize,Int) ; IMPORT_FUN(fmt##_headerCons,Int -> IO (Ptr CChar)) ; fmt = F #fmt fmt##_entry fmt##_headerSize fmt##_headerCons
 
 raw entry = F ("raw:"++show entry) entry 0 (const $ return nullPtr)
-importFmt(elf64) ; importFmt(elf32) ; importFmt(exe)
+IMPORT_FORMAT(elf64) ; IMPORT_FORMAT(elf32) ; IMPORT_FORMAT(exe)
 formats = [elf64,elf32,exe]
 
 #if x86_64_HOST_ARCH

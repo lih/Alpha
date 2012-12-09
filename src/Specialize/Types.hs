@@ -2,7 +2,7 @@
 module Specialize.Types(BinCode(..), isEmptyCode, binCodeData
                        ,Architecture(..)
                        ,Info(..)
-                       ,Location(..), isFlags, regSyms, symLocs, symReg
+                       ,Location(..), isFlags, isRegister, regSyms, symLocs, symReg
                        ,MemState(..), Future(..), emptyFuture
                        ,frame_, locations_, flocations_) where
 
@@ -82,6 +82,7 @@ flocations_ = View (flocations ,\r f -> f { flocations = r })
 regNum (Register r) = Just r
 regNum _ = Nothing
 isFlags (Flags _) = True ; isFlags _ = False
+isRegister (Register _) = True; isRegister _ = False
 
 regSyms r locs = S.toList $ R.lookupDom (Register r) locs
 symLocs s locs = S.toList $ R.lookupRan s locs

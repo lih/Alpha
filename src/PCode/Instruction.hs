@@ -70,7 +70,7 @@ navigate code = (bs,instr,nexts,prevs)
 
 spanArray bs tree = array bs (assocs Nothing tree)
   where assocs p (Node a subs) = (a,(p,map rootLabel subs)):concatMap (assocs (Just a)) subs
-codeRefs (Code args code ret) = [v | SymVal GValue v <- concatMap instrVals code]
+codeRefs (Code args code ret) = [v | SymVal t v <- concatMap instrVals code, t == GValue || t==SymID]
 
 instance Show Instruction where  
   show (Op BCall d (f:args)) = show d ++ " = " ++ show f ++ "(" ++ intercalate "," (map show args) ++ ")"

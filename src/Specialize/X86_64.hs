@@ -107,7 +107,8 @@ loadRoot (Just s) = lift locInfo >>= \(locs,_) -> case symReg s locs of
     return r
 loadRoot Nothing = return rsp
 
-saveRegs rs = lift locInfo >>= \(locs,_) -> saveVars $ concatMap (flip regSyms locs) rs
+saveRegs rs = lift locInfo >>= \(locs,_) -> saveVars $ nubOrd $ concatMap (flip regSyms locs) rs
+storeRegs rs = lift locInfo >>= \(locs,_) -> storeVars $ nubOrd $ concatMap (flip regSyms locs) rs
 saveVars = saveVars' (\p s -> R.member s Memory (locations p) || S.size (R.lookupRan s (locations p)) > 1)
 storeVars = saveVars' (\p s -> R.member s Memory (locations p))
 saveVars' isSaved vs = lift locInfo >>= \(locs,_) -> do
@@ -302,20 +303,21 @@ compileOp BCall d (fun:args) = withFreeSet $ do
         Nothing -> return ()
 
   modify (SB.delete rax)
-  let args' = [(arg,Just r) | (id,arg) <- argAssocs, Register r <- symLocs id locs]
+  let args' = [(arg,Just r) | (sym,arg) <- argAssocs, Register r <- symLocs sym locs]
   (func:_,cload) <- listen $ loadArgs $ (fun,Nothing):args'
 
   readFuture $ do
     put (SB.empty compare)
-    (_,cstore) <- listen $ saveRegs allocRegs
+    (_,cstore) <- listen $ storeRegs allocRegs
     top <- lift $ gets (frameTop . frame)
     (_,cstore') <- listen $ do
       lift $ mapM_ (storeBig top) argAssocs
       subri rsp rsp $ Left (fi top)
-    let pos = verbAddress >§ (+(snd (instrAddress thisInstr)+delta))
+    let pos = verbAddress >§ \va -> va+snd (instrAddress thisInstr)+delta
         BC ~(_,delta,_) = cload <> cstore <> cstore'
     (call <|||> calli pos) func
     addri rsp rsp $ Left (fi top)
+    lift $ modifying locations_ (R.filterRan (not . isRegister))
     lift $ associateVR d rax
 
 compileOp b d [s]
