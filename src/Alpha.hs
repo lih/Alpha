@@ -10,6 +10,7 @@ import Data.Functor.Identity
 import Data.IORef
 import Data.List
 import Data.Maybe
+import Data.Monoid
 import Data.Ord
 import Data.Version
 import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
@@ -39,6 +40,9 @@ import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Serialize as Ser
 
+-- The mprotect function in System.Posix.Mman doesn't have the right type signature, so we reimport it here
+foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
+
 newtype Str = Str String
 instance Show Str where show (Str s) = s
 
@@ -64,13 +68,13 @@ entry = formatEntry $ outputFmt ?settings
 languageFile language = languageDir ?settings</>language<.>"l"
 findSource language = findM doesFileExist [dir</>language<.>"a" | dir <- sourceDirs ?settings]
 
-interactive = withDefaultContext $ do
+interactive = withInitialContext $ do
   putStrLn $ "Alpha, version "++showVersion version++". Type alpha/help() for help on Alpha invocation. ^D to exit."
   str <- getContents
-  let sTree = concat $ parseAlpha "/dev/stdin" str
-  mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (Group []:sTree)
+  putStr "> " >> hFlush stdout
+  mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (parseAlpha "/dev/stdin" str)
   putStrLn "\rGoodbye !"
-compileProgram (language,entryName) = withDefaultContext $ do
+compileProgram (language,entryName) = withInitialContext $ do
   importLanguage compileLanguage (const $ return ()) language
   l <- getting language_
   entrySym <- viewState language_ $ internSym entryName
@@ -92,25 +96,23 @@ compileLanguage force name = do
          B.writeFile langFile (Ser.encode lang)
          return lang
   return (not skip,l)
-    where compileFile src = withDefaultContext $ (>> gets language) $ do
+    where compileFile src = withInitialContext $ do
             str <- readFile src
-            let sTree = concat $ parseAlpha src str
-            init <- mapM compileExpr sTree
-            languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
+            inits <- mapM compileExpr (parseAlpha src str)
+            getting (language_ >>> f_ (,inits))
 compileExpr expr = do
-  symExpr <- languageState $ envCast expr
-  trExpr <- doTransform symExpr
-  (code,imports) <- languageState $ compile [] Nothing trExpr
-  mapM_ (importLanguage compileLanguage (mapM_ execCode)) imports
-  execCode code
-  return code
+  expr <- doTransform =<< viewing language_ (envCast expr)
+  (code,imports) <- viewing language_ $ compile [] Nothing expr
+  mapM_ (importLanguage compileLanguage (mapM_ runSym)) imports
+  internCode code >>= \s -> runSym s >> return s
 
-foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
+internCode code = viewing language_ $ state createSym >>= \s -> modify (exportSymVal s (Verb code)) >> return s
 
-foreign import ccall "dynamic" mkProc :: FunPtr (Ptr() -> IO ()) -> Ptr() -> IO ()
-foreign import ccall "dynamic" mkFunSize :: FunPtr (Ptr() -> IO Int) -> Ptr() -> IO Int
-foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> Ptr() -> IO ()) -> Ptr() -> Ptr () -> IO ()
-foreign import ccall "dynamic" mkFunTransform :: FunPtr (Ptr () -> Ptr() -> IO (Ptr ())) -> Ptr() -> Ptr () -> IO (Ptr ())
+#define DYNAMIC(name,type) foreign import ccall "dynamic" name :: FunPtr (type) -> type
+DYNAMIC(mkProc,Ptr() -> IO ())
+DYNAMIC(mkFunSize,Ptr() -> IO Int)
+DYNAMIC(mkFunInit,Ptr() -> Ptr() -> IO ())
+DYNAMIC(mkFunTransform,Ptr() -> Ptr() -> IO (Ptr()))
 
 funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
 exportAlpha stub ptr = unsafePerformIO $ do
@@ -183,7 +185,7 @@ ALPHA_EXPORT(printLang,IO()) = getting language_ >>= print
 ALPHA_EXPORT(reload,IO()) = withSettings $ do
   imports <- getting (language_ >>> f_ (languagesL >>> BM.toList >>> map fst)) 
   put initialContext
-  mapM_ (importLanguage compileLanguage (mapM_ execCode)) imports
+  mapM_ (importLanguage compileLanguage (mapM_ runSym)) imports
 
 compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 contextRef = unsafePerformIO $ newIORef (error "Undefined context" :: Context)
@@ -191,30 +193,26 @@ instance MonadState Context IO where
   get = readIORef contextRef
   put = writeIORef contextRef
 
+withInitialContext = withState initialContext
 initialContext = C ?settings lang jitA M.empty (fromIntegral entry) Nothing
-  where (lang,jitA) = execState (mapM_ st initialBindings) (C.emptyLanguage,M.empty)
+  where (lang,jitA) = execState (mapM_ st initialBindings) (mempty,M.empty)
           where st (s,v) = do
                   i <- viewState fst_ (internSym s)
                   case v of
                     Left v -> modifying fst_ (setSymVal i v)
                     Right p -> modifying snd_ (M.insert i p)
 
-withDefaultContext = withState initialContext
-contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
-languageState = contextState . viewing language_
 
 pageSize = fromIntegral $ unsafePerformIO $ c'sysconf c'_SC_PAGESIZE
 enableExec p size = do
   let p' = alignPtr (p`plusPtr`(1-pageSize)) pageSize
   mprotect (castPtr p') (fromIntegral $ size+ p`minusPtr`p') (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
   
-evalCode :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> Code -> (a -> IO b) -> IO b
-evalCode wrap stub code f = do
-  sym <- languageState $ state createSym >>= \s -> modify (setSymVal s (Verb code)) >> return s
+callSym :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> ID -> (a -> IO b) -> IO b
+callSym wrap stub sym f = do
   p <- getAddressJIT sym
   unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p)
-  
-execCode c = evalCode mkProc execStub c id
+runSym sym = callSym mkProc execStub sym id
 
 withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
 getAddress arch lookup register = withRef compAddrRef getAddr . getAddr
@@ -230,11 +228,12 @@ getAddress arch lookup register = withRef compAddrRef getAddr . getAddr
           withForeignPtr ptr $ \p -> do
             unsafeUseAsCStringLen code $ \(p',n) -> copyBytes p (castPtr p') n
             enableExec p size
-        Noun size init -> do
-          size <- evalCode mkFunSize execStub size id
+        Noun sizeCode initCode -> do
+          [sizeSym,initSym] <- mapM internCode [sizeCode,initCode]
+          size <- callSym mkFunSize execStub sizeSym id
           ptr <- mallocForeignPtrBytes size
           register sym ptr size
-          withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
+          withForeignPtr ptr $ \p -> callSym mkFunInit initStub initSym ($castPtr p)
         _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
 
 getAddressJIT = getAddress arch_host lookup register

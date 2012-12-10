@@ -5,22 +5,17 @@ import Text.ParserCombinators.Parsec hiding (spaces)
 import My.Control.Monad
 import Data.Maybe
 
-parseAlpha file s = lazyMany axiom file s
+parseAlpha file s = concat $ lazyMany axiom file s
 
 -- Utilities
 lazyMany p file contents = lm state0
-      where
-        Right state0 = parse getParserState file contents
-
+  where Right state0 = parse getParserState file contents
         lm state = case parse p' "" "" of
           Left err -> error (show err)
           Right x -> x
-          where
-            p' = do
-              setParserState state
-              choice [
-                try (oWhite >> eof >> return []),
-                liftM2 (:) (p >>= \p -> optional (oneOf ",;") >> return p) $ lm $< getParserState]
+          where p' = setParserState state >>
+                     (try (oWhite >> eof >> return [])
+                      <|> liftM2 (:) (p >>= \p -> optional (oneOf ",;") >> return p) (lm $< getParserState))
 wrParen e@(_:_:_) = mkNode e
 wrParen e = concat e
 mkNode = return . Group . concat

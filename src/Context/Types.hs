@@ -25,15 +25,19 @@ data Value = Axiom Axiom
            | NoValue
            deriving Show
 
+references (Verb code) = codeRefs code 
+references (Noun size init) = codeRefs size ++ codeRefs init
+references _ = []
+
 data Language = Language {
+  nameL       :: String,
   maxIDL      :: ID,
   symbolsL    :: Bimap String ID,
   aliasesL    :: Map ID ID,
   equivsL     :: Map ID ID,
   languagesL  :: Bimap String (Range ID),
   valuesL     :: Map ID Context.Types.Value,
-  exportsL    :: Set ID,
-  initializeL :: [Code]
+  exportsL    :: Set ID
   }
 syms_ = View (symbolsL,\s ce -> ce { symbolsL = s })
 vals_ = View (valuesL,\v ce -> ce { valuesL = v })
