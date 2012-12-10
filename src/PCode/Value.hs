@@ -31,7 +31,7 @@ readConstant s = let (a,b) = break (=='#') (filter (/='-') s) in eitherToMaybe $
         
 instance Show Value where
   show (SymVal t v)   = prefix++show v
-    where prefix = fromJust $ lookup t [(Value,""),(Address,"@"),(Size,"#"),(SymID,"$"),(GValue,"")]
+    where prefix = fromJust $ lookup t [(Value,""),(Address,"@"),(Size,"#"),(SymID,"$"),(GValue,"g")]
   show (IntVal n)   = show n
   show NullVal      = "(null)"
 

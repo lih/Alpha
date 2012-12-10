@@ -1,98 +1,280 @@
-{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction, ParallelListComp, TupleSections #-}
+{-# LANGUAGE ViewPatterns, ImplicitParams, NoMonomorphismRestriction, ParallelListComp, TupleSections, CPP, ForeignFunctionInterface, MultiParamTypeClasses, RankNTypes #-}
+import Bindings.Posix.Sys.Mman
+import Bindings.Posix.Unistd
 import Compile
-import Context
+import Context as C
+import Control.Category ((>>>))
+import Data.ByteString.Internal
 import Data.ByteString.Unsafe
+import Data.Functor.Identity
+import Data.IORef
 import Data.List
 import Data.Maybe
 import Data.Ord
 import Data.Version
+import Foreign hiding (unsafePerformIO,unsafeForeignPtrToPtr,void)
+import Foreign.C
+import Foreign.ForeignPtr.Unsafe
+import Format
+import ID
+import My.Control.Monad
+import My.Control.Monad.State
+import My.Prelude
+import Options
+import PCode
+import Paths_alpha (version)
+import Serialize
+import Specialize
+import Specialize.Architecture
+import Syntax
+import Syntax.Parse
+import System.Directory
+import System.Environment as SE
+import System.FilePath
+import System.IO
+import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Files
 import qualified Data.Bimap as BM
 import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Serialize as Ser
-import Format
-import Foreign hiding (void)
-import My.Control.Monad
-import My.Control.Monad.State hiding ((<.>))
-import My.Prelude
-import Options
-import Paths_alpha (version)
-import PCode
-import Serialize
-import Specialize
-import Syntax
-import Syntax.Parse
-import System.IO
-import System.Directory
-import System.Environment as SE
-import System.FilePath
-import System.Posix.Files
-
-main = do
-  args <- getArgs
-  case getSettings args of
-    Right s -> execute s
-    Left err -> fail err
-
-execute s = case action s of
-  PrintHelp -> printHelp
-  PrintVersion -> printVersion
-  Compile -> doCompile s
-
-printHelp = putStrLn helpMsg
-printVersion = putStrLn $ "Alpha version "++showVersion version
 
 newtype Str = Str String
 instance Show Str where show (Str s) = s
 
-doCompile opts = case programs opts of
-  [] -> interactive
-  progs -> mapM_ compileProgram progs
+withSettings :: ((?settings :: Settings) => IO a) -> IO a
+withSettings m = gets settings >>= \s -> let ?settings = s in m
+
+main = do
+  args <- getArgs
+  case getSettings args of
+    Right s -> do
+      put (C s undefined undefined undefined undefined undefined)
+      withSettings $ case (action ?settings,programs ?settings) of
+        (PrintHelp,_)    -> printHelp
+        (PrintVersion,_) -> printVersion
+        (Compile,[])     -> interactive
+        (Compile,progs)  -> mapM_ compileProgram progs
+    Left err -> fail err
+
+printHelp = putStrLn helpMsg
+printVersion = putStrLn $ "Alpha version "++showVersion version
+
+entry = formatEntry $ outputFmt ?settings
+languageFile language = languageDir ?settings</>language<.>"l"
+findSource language = findM doesFileExist [dir</>language<.>"a" | dir <- sourceDirs ?settings]
+
+interactive = withDefaultContext $ do
+  putStrLn $ "Alpha, version "++showVersion version++". Type alpha/help() for help on Alpha invocation. ^D to exit."
+  str <- getContents
+  let sTree = concat $ parseAlpha "/dev/stdin" str
+  mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (Group []:sTree)
+  putStrLn "\rGoodbye !"
+compileProgram (language,entryName) = withDefaultContext $ do
+  importLanguage compileLanguage (const $ return ()) language
+  l <- getting language_
+  entrySym <- viewState language_ $ internSym entryName
+  _ <- getAddressComp (outputArch ?settings) entrySym
+  (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
+  top <- gets compTop
+  contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
+                                   | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
+  writeFormat (outputFmt ?settings) entryName contents
+compileLanguage force name = do
+  let langFile = languageFile name
+  source <- findSource name
+  skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
+  l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
+                    id $< Ser.decode $< B.readFile langFile else do
+         putStrLn $ "Compiling language "++name++"..."
+         lang <- compileFile $ fromMaybe (error $ "Couldn't find source file for language "++name) source
+         createDirectoryIfMissing True (dropFileName langFile)
+         B.writeFile langFile (Ser.encode lang)
+         return lang
+  return (not skip,l)
+    where compileFile src = withDefaultContext $ (>> gets language) $ do
+            str <- readFile src
+            let sTree = concat $ parseAlpha src str
+            init <- mapM compileExpr sTree
+            languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
+compileExpr expr = do
+  symExpr <- languageState $ envCast expr
+  trExpr <- doTransform symExpr
+  (code,imports) <- languageState $ compile [] Nothing trExpr
+  mapM_ (importLanguage compileLanguage (mapM_ execCode)) imports
+  execCode code
+  return code
+
+foreign import ccall "mprotect" mprotect :: Ptr () -> CSize -> CInt -> IO CInt
+
+foreign import ccall "dynamic" mkProc :: FunPtr (Ptr() -> IO ()) -> Ptr() -> IO ()
+foreign import ccall "dynamic" mkFunSize :: FunPtr (Ptr() -> IO Int) -> Ptr() -> IO Int
+foreign import ccall "dynamic" mkFunInit :: FunPtr (Ptr () -> Ptr() -> IO ()) -> Ptr() -> Ptr () -> IO ()
+foreign import ccall "dynamic" mkFunTransform :: FunPtr (Ptr () -> Ptr() -> IO (Ptr ())) -> Ptr() -> Ptr () -> IO (Ptr ())
+
+funPtrToInteger f = fromIntegral $ ptrToIntPtr $ castFunPtrToPtr f
+exportAlpha stub ptr = unsafePerformIO $ do
+  unsafeUseAsCStringLen (stub $ funPtrToInteger ptr) $ \(src,size) -> do
+    ptr <- mallocForeignPtrBytes size
+    withForeignPtr ptr $ \dst -> copyBytes (castPtr dst) src size
+    return ptr
+initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
+  ("alter"  ,Left $ Axiom XAlter),
+  ("bind"   ,Left $ Axiom XBind),
+
+  ("choose" ,Left $ Axiom XChoose),
+  ("<-"     ,Left $ Axiom XRestart),
+  ("->"     ,Left $ Axiom XReturn),
+  ("do"     ,Left $ Axiom XDo),
+
+  ("lang"   ,Left $ Axiom XLang),
+  ("verb"   ,Left $ Axiom XVerb),
+  ("noun"   ,Left $ Axiom XNoun),
+
+  ("id"     ,Left $ Axiom XID),
+  ("@"      ,Left $ Axiom XAddr),
+  ("#"      ,Left $ Axiom XSize)] ++ [
+
+  ("alpha/c@"            , Right $ exportAlpha callStub1 alpha_compAddr),    
+  ("alpha/create-symbol" , Right $ exportAlpha callStub0 alpha_createSym),
+  ("alpha/number-symbol" , Right $ exportAlpha callStub1 alpha_numSym),
+  ("alpha/symbol-name"   , Right $ exportAlpha callStub1 alpha_symName),
+  ("alpha/name-symbol"   , Right $ exportAlpha callStub1 alpha_nameSym),
+
+  ("alpha/set-transform" , Right $ exportAlpha callStub1 alpha_setTransform),    
+  ("alpha/reload"        , Right $ exportAlpha callStub0 alpha_reload),    
+  
+  ("alpha/allocate"      , Right $ exportAlpha callStub1 alpha_allocate), 
+  ("alpha/free"          , Right $ exportAlpha callStub1 alpha_free), 
+  
+  ("alpha/list"          , Right $ exportAlpha callStub0 alpha_printList),
+  ("alpha/lang"          , Right $ exportAlpha callStub0 alpha_printLang),
+  ("alpha/help"          , Right $ exportAlpha callStub0 alpha_printHelp),
+  ("alpha/print-OK"      , Right $ exportAlpha callStub0 alpha_printOK),    
+  ("alpha/print-num"     , Right $ exportAlpha callStub1 alpha_printNum)
+  ]
+
+#define str(x) #x
+#define ALPHA_EXPORT(fun,t) foreign export ccall str(__alpha_##fun) __alpha_##fun :: t ; foreign import ccall str(&__alpha_##fun) alpha_##fun :: FunPtr (t) ; __alpha_##fun
+ALPHA_EXPORT(setTransform,Ptr () -> IO ()) fun = modify $ \c -> c { transform = Just fun }
+ALPHA_EXPORT(compAddr,ID -> IO Int) id = readIORef compAddrRef >>= ($id)
+
+ALPHA_EXPORT(symName,ID -> IO (Ptr Word8)) sym = do
+  n <- gets (lookupSymName sym . language)
+  ret <- newArray0 0 (map c2w $ fromMaybe "" n)
+  return ret
+ALPHA_EXPORT(nameSym,Ptr Word8 -> IO ID) p = do
+  l <- peekArray0 0 p
+  viewState language_ (internSym $ map w2c l)
+ALPHA_EXPORT(createSym,IO ID) = viewState language_ createSym
+ALPHA_EXPORT(numSym,Int -> IO ID) = viewState language_ . internSym . show
+
+ALPHA_EXPORT(allocate,Int -> IO (Ptr())) = mallocBytes
+ALPHA_EXPORT(free,Ptr() -> IO ()) = free
+
+ALPHA_EXPORT(printHelp,IO()) = printHelp
+ALPHA_EXPORT(printOK,IO()) = putStrLn "OK"
+ALPHA_EXPORT(printNum,Int -> IO()) n = print (intPtrToPtr $ fromIntegral n)
+ALPHA_EXPORT(printList,IO()) = do
+  syms <- getting (language_ >>> syms_)
+  putStrLn $ intercalate " " (map fst $ BM.toList syms)
+ALPHA_EXPORT(printLang,IO()) = getting language_ >>= print
+
+ALPHA_EXPORT(reload,IO()) = withSettings $ do
+  imports <- getting (language_ >>> f_ (languagesL >>> BM.toList >>> map fst)) 
+  put initialContext
+  mapM_ (importLanguage compileLanguage (mapM_ execCode)) imports
+
+compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
+contextRef = unsafePerformIO $ newIORef (error "Undefined context" :: Context)
+instance MonadState Context IO where
+  get = readIORef contextRef
+  put = writeIORef contextRef
+
+initialContext = C ?settings lang jitA M.empty (fromIntegral entry) Nothing
+  where (lang,jitA) = execState (mapM_ st initialBindings) (C.emptyLanguage,M.empty)
+          where st (s,v) = do
+                  i <- viewState fst_ (internSym s)
+                  case v of
+                    Left v -> modifying fst_ (setSymVal i v)
+                    Right p -> modifying snd_ (M.insert i p)
+
+withDefaultContext = withState initialContext
+contextState sta = (runState sta $< readIORef contextRef) >>= \(a,s') -> writeIORef contextRef s' >> return a
+languageState = contextState . viewing language_
+
+pageSize = fromIntegral $ unsafePerformIO $ c'sysconf c'_SC_PAGESIZE
+enableExec p size = do
+  let p' = alignPtr (p`plusPtr`(1-pageSize)) pageSize
+  mprotect (castPtr p') (fromIntegral $ size+ p`minusPtr`p') (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
+  
+evalCode :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> Code -> (a -> IO b) -> IO b
+evalCode wrap stub code f = do
+  sym <- languageState $ state createSym >>= \s -> modify (setSymVal s (Verb code)) >> return s
+  p <- getAddressJIT sym
+  unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p)
+  
+execCode c = evalCode mkProc execStub c id
+
+withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x
+getAddress arch lookup register = withRef compAddrRef getAddr . getAddr
   where
-    entry = formatEntry $ outputFmt opts
-    languageFile language = languageDir opts</>language<.>"l"
-    findSource language = findM doesFileExist [file | dir <- sourceDirs opts
-                                                    , let base = dir</>language
-                                                    , file <- [base<.>"a",base]]
+    getAddr sym = lookup sym >>= \val -> case val of
+      Just a -> return a
+      Nothing -> gets language >>= \lang -> (>> getAddr sym) $ case lookupSymVal sym lang of
+        Verb c -> void $ do
+          let (size,codem) = specialize arch (sym,getAddr) c
+          ptr <- mallocForeignPtrBytes size
+          register sym ptr size
+          code <- codem
+          withForeignPtr ptr $ \p -> do
+            unsafeUseAsCStringLen code $ \(p',n) -> copyBytes p (castPtr p') n
+            enableExec p size
+        Noun size init -> do
+          size <- evalCode mkFunSize execStub size id
+          ptr <- mallocForeignPtrBytes size
+          register sym ptr size
+          withForeignPtr ptr $ \p -> evalCode mkFunInit initStub init ($castPtr p)
+        _ -> fail $ "Couldn't find definition of symbol "++fromMaybe (show sym) (lookupSymName sym lang)
 
-    interactive = withDefaultContext entry $ do
-      putStrLn $ "Alpha, version "++showVersion version++". Type alpha/help() for help on Alpha invocation. ^D to exit."
-      str <- getContents
-      let sTree = concat $ parseAlpha "/dev/stdin" str
-      mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (Group []:sTree)
-      putStrLn "\rGoodbye !"
-    compileProgram (language,entryName) = withDefaultContext entry $ do
-      importLanguage compileLanguage (const $ return ()) language
-      l <- getting language_
-      entrySym <- viewState language_ $ internSym entryName
-      _ <- getAddressComp (outputArch opts) entrySym
-      (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
-      top <- gets compTop
-      contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
-                                       | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-      writeFormat (outputFmt opts) entryName contents
-    compileLanguage force name = do
-      let langFile = languageFile name
-      source <- findSource name
-      skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
-      l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
-                        id $< Ser.decode $< B.readFile langFile else do
-             putStrLn $ "Compiling language "++name++"..."
-             lang <- compileFile $ fromMaybe (error $ "Couldn't find source file for language "++name) source
-             createDirectoryIfMissing True (dropFileName langFile)
-             B.writeFile langFile (Ser.encode lang)
-             return lang
-      return (not skip,l)
-        where compileFile src = withDefaultContext entry $ (>> gets language) $ do
-                str <- readFile src
-                let sTree = concat $ parseAlpha src str
-                init <- mapM compileExpr sTree
-                languageState $ modify $ \e -> exportLanguage $ e { initializeL = init }
-    compileExpr expr = do
-      symExpr <- languageState $ envCast expr
-      trExpr <- doTransform symExpr
-      (code,imports) <- languageState $ compile [] Nothing trExpr
-      mapM_ (importLanguage compileLanguage (mapM_ execCode . initializeL)) imports
-      execCode code
-      return code
+getAddressJIT = getAddress arch_host lookup register
+  where lookup id = do
+          val <- M.lookup id $< gets jitAddresses
+          return $ (fromIntegral . ptrToIntPtr . unsafeForeignPtrToPtr) $< val
+        register id ptr size = modifying jitAddresses_ (M.insert id ptr)
+getAddressComp arch = getAddress arch lookup register
+  where lookup id = (fst$<) $< M.lookup id $< gets compAddresses
+        register id ptr size = do
+          n <- getting compTop_
+          modifying compAddresses_ (M.insert id (n,ptr))
+          modifying compTop_ (+size)
 
+doTransform syn = gets transform >>= ($syn) . maybe return tr 
+  where tr fun tree = do
+          root <- allocTree tree
+          new <- unsafeUseAsCString initStub $ \stub -> mkFunTransform (castPtrToFunPtr stub) fun root
+          readTree new
+        intS = sizeOf (undefined::Int) ; ptrS = sizeOf (undefined::Ptr())
+        pok e p = poke (castPtr p) e >> return (p`plusPtr`sizeOf e)
+        pik p = peek (castPtr p) >>= \e -> return (e,p`plusPtr`sizeOf e)
+        allocTree (Group g) = do
+          p <- mallocBytes (intS+intS+(length g*ptrS))
+          p' <- pok (0::Int) p
+          p'' <- pok (length g) p'
+          mapM allocTree g >>= \l -> pokeArray (castPtr p'') l
+          return p
+        allocTree (Symbol (ID s)) = do
+          p <- mallocBytes (intS+intS)
+          p' <- pok (1::Int) p
+          pok s p'
+          return p
+        readTree p = do
+          (t,p') <- pik p
+          case t :: Int of
+            0 -> do
+              (s,p'') <- pik p'
+              l <- peekArray s p''
+              liftM Group $ mapM readTree l
+            1 -> do
+              liftM (Symbol . ID) $ peek p'
+              

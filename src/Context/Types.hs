@@ -10,6 +10,7 @@ import My.Control.Monad.State
 import ID
 import PCode
 import Syntax
+import Options
 
 data Axiom = XAlter | XBind
            | XReturn | XRestart | XChoose | XDo
@@ -38,6 +39,7 @@ syms_ = View (symbolsL,\s ce -> ce { symbolsL = s })
 vals_ = View (valuesL,\v ce -> ce { valuesL = v })
 
 data Context = C {
+  settings      :: Settings,
   language      :: Language,
   jitAddresses  :: Map ID (ForeignPtr Word8),
   compAddresses :: Map ID (Int,ForeignPtr Word8),

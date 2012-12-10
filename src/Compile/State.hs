@@ -1,6 +1,5 @@
 {-# LANGUAGE StandaloneDeriving, NoMonomorphismRestriction, ViewPatterns #-}
 module Compile.State(
-  module Context.Types,
   module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
   depGraph_,infoStack_,imports_,
@@ -26,11 +25,8 @@ import My.Control.Monad.State
 import My.Control.Monad
 import ID
 import My.Data.Graph hiding (deleteEdge,deleteNode,getContext,empty)
-import Context.Types
-import Context.Language as L
-
+import Context as C
 import qualified My.Data.Graph as G
-import qualified Context as E
 import qualified Data.Map as M
 
 deriving instance Eq Instruction
@@ -63,7 +59,7 @@ singleCode n = ([n],[n])
 isBackEdge (_,BranchAlt Backward _) = True
 isBackEdge _ = False
 
-getSymName  = lift . gets . L.lookupSymName
+getSymName  = lift . gets . C.lookupSymName
 getSymVal s = lift $ getting (vals_ >>> f_ (M.lookup s))
 newVar      = lift $ state createSym
 

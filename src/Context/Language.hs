@@ -32,7 +32,7 @@ instance Show Language where
     ["Exports: "++show (exportsL e)],
     ["Load code: "++show (initializeL e)]]
 
-empty = Language (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty []
+emptyLanguage = Language (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty []
 
 createSym e@(Language { maxIDL = m }) = (m,e { maxIDL = succ m })
 setSymVal id v e = e { valuesL = M.insert id v (valuesL e) }
@@ -66,8 +66,8 @@ importLanguage getImport loadImport imp = merge imp
         mapM merge [imp | (imp,_) <- BM.toList (languagesL l')]
         return l'
                 else return l'
-      mergeLanguage imp l'
-      loadImport l'
+      init <- mergeLanguage imp l'
+      loadImport init
       return $ comp || recomp
     mergeLanguage imp l' = viewing language_ $ do
       let Language { symbolsL = syms' , languagesL = mods' , maxIDL = mi' } = l'
@@ -80,7 +80,7 @@ importLanguage getImport loadImport imp = merge imp
         aliasesL = aliasesL l `M.union` M.fromList aliases,
         equivsL = equivsL l `M.union` M.fromList (map swap aliases)
         }
-      Language { aliasesL = al , languagesL = mods } <- get
+      Language { aliasesL = al , languagesL = mods, initializeL = init } <- get
       let tr s = fromMaybe (tr' s) $ M.lookup (tr' s) al
           tr' s' = fromMaybe (s' + mi) $ do
             m <- lookupSymMod s' l'
@@ -93,6 +93,7 @@ importLanguage getImport loadImport imp = merge imp
         valuesL    = M.unionWith (\_ a -> a) (valuesL l) newVals,
         exportsL   = exportsL l S.\\ M.keysSet newVals 
         }
+      return (translate tr init)
           
 exportLanguage l = l {
   symbolsL    = BM.filter exportNameP (symbolsL l),

@@ -3,7 +3,7 @@ module Compile(compile) where
 
 import Compile.State as CS
 import Compile.Utils
-import Context.Language
+import Context
 import Data.Either
 import Data.Maybe
 import ID
