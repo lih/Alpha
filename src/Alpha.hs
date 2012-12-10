@@ -76,7 +76,6 @@ interactive = withInitialContext $ do
   putStrLn "\rGoodbye !"
 compileProgram (language,entryName) = withInitialContext $ do
   importLanguage compileLanguage (const $ return ()) language
-  l <- getting language_
   entrySym <- viewState language_ $ internSym entryName
   _ <- getAddressComp (outputArch ?settings) entrySym
   (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -102,8 +101,7 @@ compileLanguage force name = do
             getting (language_ >>> f_ (,inits))
 compileExpr expr = do
   expr <- doTransform =<< viewing language_ (envCast expr)
-  (code,imports) <- viewing language_ $ compile [] Nothing expr
-  mapM_ (importLanguage compileLanguage (mapM_ runSym)) imports
+  code <- viewing language_ $ compile [] Nothing expr
   internCode code >>= \s -> runSym s >> return s
 
 internCode code = viewing language_ $ state createSym >>= \s -> modify (exportSymVal s (Verb code)) >> return s
@@ -129,7 +127,6 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("->"     ,Left $ Axiom XReturn),
   ("do"     ,Left $ Axiom XDo),
 
-  ("lang"   ,Left $ Axiom XLang),
   ("verb"   ,Left $ Axiom XVerb),
   ("noun"   ,Left $ Axiom XNoun),
 
@@ -144,14 +141,17 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/name-symbol"   , Right $ exportAlpha callStub1 alpha_nameSym),
 
   ("alpha/set-transform" , Right $ exportAlpha callStub1 alpha_setTransform),    
+  ("alpha/import"        , Right $ exportAlpha callStub1 alpha_import),
   ("alpha/reload"        , Right $ exportAlpha callStub0 alpha_reload),    
   
   ("alpha/allocate"      , Right $ exportAlpha callStub1 alpha_allocate), 
   ("alpha/free"          , Right $ exportAlpha callStub1 alpha_free), 
   
+  ("alpha/help"          , Right $ exportAlpha callStub0 alpha_printHelp),
+
+  -- debugging functions
   ("alpha/list"          , Right $ exportAlpha callStub0 alpha_printList),
   ("alpha/lang"          , Right $ exportAlpha callStub0 alpha_printLang),
-  ("alpha/help"          , Right $ exportAlpha callStub0 alpha_printHelp),
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 alpha_printOK),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 alpha_printNum)
   ]
@@ -182,6 +182,11 @@ ALPHA_EXPORT(printList,IO()) = do
   putStrLn $ intercalate " " (map fst $ BM.toList syms)
 ALPHA_EXPORT(printLang,IO()) = getting language_ >>= print
 
+ALPHA_EXPORT(import,ID -> IO()) sym = withSettings $ do
+  name <- getting (language_ >>> f_ (lookupSymName sym))
+  void $ case name of
+    Just name -> importLanguage compileLanguage (mapM_ runSym) name
+    Nothing -> error $ "Symbol "++show sym++" has no name."
 ALPHA_EXPORT(reload,IO()) = withSettings $ do
   imports <- getting (language_ >>> f_ (languagesL >>> BM.toList >>> map fst)) 
   put initialContext
@@ -209,9 +214,9 @@ enableExec p size = do
   mprotect (castPtr p') (fromIntegral $ size+ p`minusPtr`p') (c'PROT_READ .|. c'PROT_WRITE .|. c'PROT_EXEC)
   
 callSym :: (FunPtr (Ptr() -> a) -> Ptr() -> a) -> ByteString -> ID -> (a -> IO b) -> IO b
-callSym wrap stub sym f = do
+callSym wrap stub sym f = unsafeUseAsCString stub $ \stub -> do
   p <- getAddressJIT sym
-  unsafeUseAsCString stub $ \stub -> f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p)
+  f $ wrap (castPtrToFunPtr stub) (intPtrToPtr $ fromIntegral p)
 runSym sym = callSym mkProc execStub sym id
 
 withRef ref val x = readIORef ref >>= \v -> writeIORef ref val >> x >>= \x -> writeIORef ref v >> return x

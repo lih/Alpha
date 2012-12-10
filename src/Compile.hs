@@ -15,7 +15,7 @@ import My.Prelude
 import PCode
 import Syntax
 
-compile args ret expr = runStateT st defaultState >§ \(code,cs) -> (code,imports cs)
+compile args ret expr = evalStateT st defaultState
   where st = do
           (_,(start,_)) <- compile' (fmap bindSym ret) expr
           c <- simplify start >>= linearize >>= lift . uniquify args ret
@@ -111,10 +111,6 @@ compileAxiom XNoun dest [Symbol sym,size,init] = do
   lift $ modify $ exportSymVal sym $ Noun codeSz codeInit
   compile' dest (Symbol sym)
 
-compileAxiom XLang _ [Symbol s] = do
-  getSymName s >>= maybe (return()) (modify . (\n e -> e { imports = n:imports e }))
-  nullCode
-
 compileAxiom XID dest [Symbol s] = compileValue dest (SymVal SymID s)
 compileAxiom XAddr dest [Symbol s] = compileValue dest (SymVal Address s)
 compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
@@ -123,8 +119,7 @@ compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "
 
 compileExpr args ret expr = do
   args <- mapM bindFromSyntax args
-  (code,imps) <- lift $ compile args ret expr
-  modifying imports_ (imps++)
+  code <- lift $ compile args ret expr
   return code
 compileValue dest val = do
   c <- singleCode $< case dest of

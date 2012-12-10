@@ -2,7 +2,7 @@
 module Compile.State(
   module My.Data.Graph,
   CompileState(..),BranchType(..),EdgeData(..),NodeData(..),CaseInfo(..),
-  depGraph_,infoStack_,imports_,
+  depGraph_,infoStack_,
   newVar,
   pushInfo,popInfo,topInfo,withInfo,withTopInfo,
   defaultState,
@@ -45,16 +45,14 @@ type CaseInfo = (Node,[Node],Node,Maybe ID)
 
 data CompileState = CS {
   infoStack :: [CaseInfo],
-  imports   :: [String],
   depGraph  :: Graph EdgeData NodeData
   }
                   deriving Show
 
 depGraph_ = View (depGraph,(\g cs -> cs { depGraph = g }))
 infoStack_ = View (infoStack,(\l cs -> cs { infoStack = l }))
-imports_ = View (imports,(\l cs -> cs { imports = l }))
 
-defaultState = CS [] [] G.empty
+defaultState = CS [] G.empty
 singleCode n = ([n],[n])
 isBackEdge (_,BranchAlt Backward _) = True
 isBackEdge _ = False
