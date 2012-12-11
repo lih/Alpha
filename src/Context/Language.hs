@@ -35,13 +35,13 @@ translateFromTo l' l = \s' -> fromMaybe (tr s') $ M.lookup (tr s') (aliasesL l)
           Range (r,_) <- BM.lookup m (languagesL l)
           Range (r',_) <- BM.lookup m (languagesL l')
           return $ s'-r'+r
-        Range (mi,_) = fromJust $ BM.lookup (nameL l') (languagesL l)
+        Range (mi,_) = languagesL l BM.! nameL l'
 instance Monoid Language where
   mempty = Language "" (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty
   mappend l l' = flip execState l $ do
     mapM_ (state . internSym) $ BM.keys (symbolsL l')
     modify $ \l ->
-      let aliases = [(i'+mi,fromJust $ BM.lookup s' (symbolsL l)) 
+      let aliases = [(i'+mi,symbolsL l BM.! s') 
                     | (s',i') <- BM.toList (symbolsL l')]
           mi = maxIDL l ; nmi = mi + maxIDL l'
       in l { maxIDL = nmi,
@@ -78,17 +78,15 @@ envCast t = T.mapM (state . intern) t
 importLanguage getImport loadImport imp = merge imp
   where 
     merge imp = gets language >>= \l -> ifThenElse (imp`isImport`l) (return False) $ do
-      (l',(comp,recomp)) <- tryCompile False imp
-      (l',init) <- if not comp && recomp then fst $< tryCompile True imp else return l'
-      loadImport =<< mergeLanguage imp (l'{ nameL = imp },init)
+      (contents,(comp,recomp)) <- tryCompile False imp
+      (l',init) <- if not comp && recomp then fst $< tryCompile True imp else return contents
+      init' <- viewing language_ $ modify (<>l') >> gets (\l -> translate (translateFromTo l' l) init)
+      loadImport init'
       return $ comp || recomp
-    mergeLanguage imp (l',init) = viewing language_ $ do
-      modify (<>l')
-      gets $ \l -> translate (translateFromTo l' l) init
     tryCompile force imp = do
-      (comp,l') <- getImport force imp
-      comps <- mapM merge (getImports $ fst l')
-      return (l',(comp,or comps))
+      (comp,(l',init)) <- getImport force imp
+      comps <- mapM merge (getImports l')
+      return ((l'{ nameL = imp },init),(comp,or comps))
 
 set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
 purgeLanguage l = mempty {
