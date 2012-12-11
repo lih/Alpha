@@ -98,7 +98,7 @@ compileLanguage force name = do
     where compileFile src = withInitialContext $ do
             str <- readFile src
             inits <- mapM compileExpr (parseAlpha src str)
-            getting (language_ >>> f_ (,inits))
+            getting (language_ >>> f_ (purgeLanguage >>> (,inits)))
 compileExpr expr = do
   expr <- doTransform =<< viewing language_ (envCast expr)
   code <- viewing language_ $ compile [] Nothing expr

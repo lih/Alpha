@@ -1,6 +1,8 @@
 module Translate where
 
 import My.Control.Monad
+import qualified Data.Map as M
+import Data.Maybe
 import Data.Bimap as BM
 import ID
 import PCode
@@ -8,6 +10,8 @@ import Context.Types as C
 
 class Translatable t where
   translate :: (ID -> ID) -> t -> t
+
+mapTranslate m = \s -> fromMaybe s $ M.lookup s m
 
 instance Translatable ID where
   translate = ($)

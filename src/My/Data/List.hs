@@ -1,5 +1,5 @@
 {-# LANGUAGE ParallelListComp #-}
-module My.Data.List(module Data.List,classesBy,nubOrd,sums,zipRest,wrap) where
+module My.Data.List(module Data.List,classesBy,nubOrd,sums,zipRest,wrap,count) where
 
 import Data.List
 
@@ -24,3 +24,4 @@ wrap words unwords n s = consume group $ words s
 
 zipRest l l' = (zip l l',drop (length l) l')
 
+count p = length . filter p
