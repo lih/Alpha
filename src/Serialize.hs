@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveGeneric, StandaloneDeriving #-}
-
 module Serialize where
 
 import Context as C
@@ -11,9 +10,6 @@ import GHC.Generics
 import ID
 import My.Control.Monad
 import PCode
-import Translate
-import qualified Data.Map as M
-import qualified Data.Set as S
 
 deriving instance Generic ValType
 deriving instance Generic PCode.Value
@@ -25,7 +21,6 @@ deriving instance Generic C.Value
 deriving instance Generic Axiom
 deriving instance Generic ID
 deriving instance Generic (Range a)
-deriving instance Generic Language
 
 instance Serialize ValType
 instance Serialize PCode.Value
@@ -41,5 +36,6 @@ instance (Ord a,Ord b,Serialize a,Serialize b) => Serialize (Bimap a b) where
   get = BM.fromList $< get 
   put = put . BM.toList
   
-instance Serialize Language        
-
+instance Serialize Language where
+  put l = put (maxIDL l,symbolsL l,valuesL l,languagesL l)
+  get = get >§ \(mi,syms,vals,langs) -> mempty{ maxIDL = mi, symbolsL = syms, valuesL = vals, languagesL = langs }

@@ -37,7 +37,7 @@ translateFromTo l' l = \s' -> fromMaybe (tr s') $ M.lookup (tr s') (aliasesL l)
           return $ s'-r'+r
         Range (mi,_) = languagesL l BM.! nameL l'
 instance Monoid Language where
-  mempty = Language "" (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty
+  mempty = Language undefined (toEnum 0) BM.empty M.empty M.empty BM.empty M.empty S.empty
   mappend l l' = flip execState l $ do
     mapM_ (state . internSym) $ BM.keys (symbolsL l')
     modify $ \l ->

@@ -93,6 +93,10 @@ compileAxiom XRestart _ [] = withInfo $ \(start,_,_,_) -> makeBackBranch NullVal
 compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
   compile' Nothing arg *>>= \v -> makeBackBranch v alts
 
+compileAxiom XAddr dest [Symbol s] = compileValue dest (SymVal Address s)
+compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
+
+compileAxiom XID dest [Symbol s] = compileValue dest (SymVal SymID s)
 compileAxiom XVerb dest [Group (name:args),expr] = do
   bv@BindVar { bindSym = sym } <- bindFromSyntax name
   ret <- case bindSubs bv of
@@ -110,10 +114,9 @@ compileAxiom XNoun dest [Symbol sym,size,init] = do
   codeInit <- compileExpr [Symbol sym] Nothing init
   lift $ modify $ exportSymVal sym $ Noun codeSz codeInit
   compile' dest (Symbol sym)
-
-compileAxiom XID dest [Symbol s] = compileValue dest (SymVal SymID s)
-compileAxiom XAddr dest [Symbol s] = compileValue dest (SymVal Address s)
-compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
+compileAxiom XLang dest [Symbol sym] = do
+  [impSym,idSym] <- lift $ mapM (state . internSym) ["alpha/import","id"]
+  compile' dest (Group [Symbol impSym,Group [Symbol idSym,Symbol sym]])
 
 compileAxiom a _ args = error $ "Couldn't compile axiom "++show a++" with args "++show args
 

@@ -15,7 +15,7 @@ import Options
 data Axiom = XAlter | XBind
            | XReturn | XRestart | XChoose | XDo
            | XAddr | XSize
-           | XVerb | XNoun | XID
+           | XLang | XVerb | XNoun | XID
            deriving Show
 
 data Value = Axiom Axiom

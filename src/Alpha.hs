@@ -127,12 +127,13 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("->"     ,Left $ Axiom XReturn),
   ("do"     ,Left $ Axiom XDo),
 
-  ("verb"   ,Left $ Axiom XVerb),
-  ("noun"   ,Left $ Axiom XNoun),
+  ("@"      ,Left $ Axiom XAddr),
+  ("#"      ,Left $ Axiom XSize),
 
   ("id"     ,Left $ Axiom XID),
-  ("@"      ,Left $ Axiom XAddr),
-  ("#"      ,Left $ Axiom XSize)] ++ [
+  ("verb"   ,Left $ Axiom XVerb),
+  ("noun"   ,Left $ Axiom XNoun),
+  ("lang"   ,Left $ Axiom XLang)] ++ [
 
   ("alpha/c@"            , Right $ exportAlpha callStub1 alpha_compAddr),    
   ("alpha/create-symbol" , Right $ exportAlpha callStub0 alpha_createSym),
