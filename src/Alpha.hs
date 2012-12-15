@@ -75,7 +75,7 @@ interactive = withInitialContext $ do
   mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (parseAlpha "/dev/stdin" str)
   putStrLn "\rGoodbye !"
 compileProgram (language,entryName) = withInitialContext $ do
-  importLanguage compileLanguage (const $ return ()) language
+  importLanguage (const $ return ()) language
   entrySym <- viewState language_ $ internSym entryName
   _ <- getAddressComp (outputArch ?settings) entrySym
   (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -83,11 +83,10 @@ compileProgram (language,entryName) = withInitialContext $ do
   contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                    | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
   writeFormat (outputFmt ?settings) entryName contents
+modTime f = modificationTime $< getFileStatus f
 compileLanguage force name = do
   let langFile = languageFile name
       newerThan f1 f2 = liftM2 (>=) (modTime f1) (modTime f2)
-        where modTime f = modificationTime $< getFileStatus f
-
   source <- findSource name
   skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
   l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
@@ -97,11 +96,23 @@ compileLanguage force name = do
          createDirectoryIfMissing True (dropFileName langFile)
          B.writeFile langFile (Ser.encode lang)
          return lang
-  return (not skip,l)
+  time <- modTime langFile
+  return (time,l)
     where compileFile src = withInitialContext $ do
             str <- readFile src
             inits <- mapM compileExpr (parseAlpha src str)
             getting (language_ >>> f_ (purgeLanguage >>> (,inits)))
+importLanguage loadImport = void . _import
+  where 
+    _import lang = gets language >>= \l -> ifThenElse (lang`isImport`l) (modTime $ languageFile lang) $ do
+      node@(time,(l',_)) <- compileLanguage False lang
+      times <- mapM _import (getImports l')
+      node <- if time < maximum times then compileLanguage True lang else return node
+      let (time,(l'',init)) = node
+          l' = l''{ nameL = lang }
+      init' <- viewing language_ $ modify (<>l') >> gets (translateInit init l')
+      loadImport init'
+      return time
 compileExpr expr = do
   expr <- doTransform =<< viewing language_ (envCast expr)
   code <- viewing language_ $ compile [] Nothing expr
@@ -195,12 +206,12 @@ ALPHA_EXPORT(printExpr,Ptr() -> IO()) = readTree >=> transform >=> print
 ALPHA_EXPORT(import,ID -> IO()) sym = withSettings $ do
   name <- getting (language_ >>> f_ (lookupSymName sym))
   void $ case name of
-    Just name -> importLanguage compileLanguage (mapM_ runSym) name
+    Just name -> importLanguage (mapM_ runSym) name
     Nothing -> error $ "Symbol "++show sym++" has no name."
 ALPHA_EXPORT(reload,IO()) = withSettings $ do
   imports <- getting (language_ >>> f_ (languagesL >>> BM.toList >>> map fst)) 
   put initialContext
-  mapM_ (importLanguage compileLanguage (mapM_ runSym)) imports
+  mapM_ (importLanguage (mapM_ runSym)) imports
 
 compAddrRef = unsafePerformIO $ newIORef (undefined :: ID -> IO Int)
 contextRef = unsafePerformIO $ newIORef (error "Undefined context" :: Context)

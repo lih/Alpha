@@ -29,6 +29,7 @@ instance Show Language where
     showTable "Values" (\(i,v) -> [show i++" -> "++show v]) $ M.toList (valuesL e),
     ["Exports: "++show (exportsL e)]]
 
+translateInit init l' l = translate (translateFromSub l' l) init
 translateFromSub l' l = \s' -> fromMaybe (tr s') $ M.lookup (tr s') (aliasesL l)
   where tr s' = fromMaybe (s' + mi) $ do
           m <- lookupSymMod s' l'
@@ -78,19 +79,6 @@ internSym s l = runState (st $ BM.lookup s (symbolsL l)) l
 envCast t = T.mapM (state . intern) t
   where intern "?" = createSym
         intern str = internSym str
-
-importLanguage getImport loadImport imp = merge imp
-  where 
-    merge imp = gets language >>= \l -> ifThenElse (imp`isImport`l) (return False) $ do
-      (contents,(comp,recomp)) <- tryCompile False imp
-      (l',init) <- if not comp && recomp then fst $< tryCompile True imp else return contents
-      init' <- viewing language_ $ modify (<>l') >> gets (\l -> translate (translateFromSub l' l) init)
-      loadImport init'
-      return $ comp || recomp
-    tryCompile force imp = do
-      (comp,(l',init)) <- getImport force imp
-      comps <- mapM merge (getImports l')
-      return ((l'{ nameL = imp },init),(comp,or comps))
 
 set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
 purgeLanguage l = mempty {
