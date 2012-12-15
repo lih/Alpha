@@ -85,6 +85,9 @@ compileProgram (language,entryName) = withInitialContext $ do
   writeFormat (outputFmt ?settings) entryName contents
 compileLanguage force name = do
   let langFile = languageFile name
+      newerThan f1 f2 = liftM2 (>=) (modTime f1) (modTime f2)
+        where modTime f = modificationTime $< getFileStatus f
+
   source <- findSource name
   skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
   l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
@@ -154,7 +157,8 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/list"          , Right $ exportAlpha callStub0 alpha_printList),
   ("alpha/lang"          , Right $ exportAlpha callStub0 alpha_printLang),
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 alpha_printOK),    
-  ("alpha/print-num"     , Right $ exportAlpha callStub1 alpha_printNum)
+  ("alpha/print-num"     , Right $ exportAlpha callStub1 alpha_printNum),
+  ("alpha/print-expr"    , Right $ exportAlpha callStub1 alpha_printExpr)
   ]
 
 #define str(x) #x
@@ -182,7 +186,12 @@ ALPHA_EXPORT(printList,IO()) = do
   syms <- getting (language_ >>> syms_)
   putStrLn $ intercalate " " (map fst $ BM.toList syms)
 ALPHA_EXPORT(printLang,IO()) = getting language_ >>= print
-
+ALPHA_EXPORT(printExpr,Ptr() -> IO()) = readTree >=> transform >=> print
+  where transform t = do
+          smap <- getting (language_ >>> syms_)
+          let symName s = fromMaybe (show s) $ BM.lookupR s smap
+          return (fmap (Str . symName) t)
+  
 ALPHA_EXPORT(import,ID -> IO()) sym = withSettings $ do
   name <- getting (language_ >>> f_ (lookupSymName sym))
   void $ case name of
@@ -259,27 +268,27 @@ doTransform syn = gets transform >>= ($syn) . maybe return tr
           root <- allocTree tree
           new <- unsafeUseAsCString initStub $ \stub -> mkFunTransform (castPtrToFunPtr stub) fun root
           readTree new
-        intS = sizeOf (undefined::Int) ; ptrS = sizeOf (undefined::Ptr())
-        pok e p = poke (castPtr p) e >> return (p`plusPtr`sizeOf e)
-        pik p = peek (castPtr p) >>= \e -> return (e,p`plusPtr`sizeOf e)
-        allocTree (Group g) = do
-          p <- mallocBytes (intS+intS+(length g*ptrS))
-          p' <- pok (0::Int) p
-          p'' <- pok (length g) p'
-          mapM allocTree g >>= \l -> pokeArray (castPtr p'') l
-          return p
-        allocTree (Symbol (ID s)) = do
-          p <- mallocBytes (intS+intS)
-          p' <- pok (1::Int) p
-          pok s p'
-          return p
-        readTree p = do
-          (t,p') <- pik p
-          case t :: Int of
-            0 -> do
-              (s,p'') <- pik p'
-              l <- peekArray s p''
-              liftM Group $ mapM readTree l
-            1 -> do
-              liftM (Symbol . ID) $ peek p'
-              
+intSize = sizeOf (undefined::Int) ; ptrSize = sizeOf (undefined::Ptr())
+pok e p = poke (castPtr p) e >> return (p`plusPtr`sizeOf e)
+pik p = peek (castPtr p) >>= \e -> return (e,p`plusPtr`sizeOf e)
+allocTree (Group g) = do
+  p <- mallocBytes (intSize+intSize+(length g*ptrSize))
+  p' <- pok (0::Int) p
+  p'' <- pok (length g) p'
+  mapM allocTree g >>= \l -> pokeArray (castPtr p'') l
+  return p
+allocTree (Symbol (ID s)) = do
+  p <- mallocBytes (intSize+intSize)
+  p' <- pok (1::Int) p
+  pok s p'
+  return p
+readTree p = do
+  (t,p') <- pik p
+  case t :: Int of
+    0 -> do
+      (s,p'') <- pik p'
+      l <- peekArray s p''
+      liftM Group $ mapM readTree l
+    1 -> do
+      liftM (Symbol . ID) $ peek p'
+            

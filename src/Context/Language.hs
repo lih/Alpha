@@ -29,7 +29,7 @@ instance Show Language where
     showTable "Values" (\(i,v) -> [show i++" -> "++show v]) $ M.toList (valuesL e),
     ["Exports: "++show (exportsL e)]]
 
-translateFromTo l' l = \s' -> fromMaybe (tr s') $ M.lookup (tr s') (aliasesL l)
+translateFromSub l' l = \s' -> fromMaybe (tr s') $ M.lookup (tr s') (aliasesL l)
   where tr s' = fromMaybe (s' + mi) $ do
           m <- lookupSymMod s' l'
           Range (r,_) <- BM.lookup m (languagesL l)
@@ -50,18 +50,22 @@ instance Monoid Language where
              languagesL = BM.insert (nameL l') (Range (mi,nmi)) (languagesL l) }
     modify $ \l ->
       let newVals = M.mapKeys tr $ M.map (translate tr) $ valuesL l'
-          tr = translateFromTo l' l
+          tr = translateFromSub l' l
       in l { valuesL    = M.unionWith (\_ a -> a) (valuesL l) newVals,
              exportsL   = exportsL l S.\\ M.keysSet newVals }
 
 createSym l@(Language { maxIDL = m }) = (m,l { maxIDL = succ m })
-setSymVal sym v l = l { valuesL = M.insert sym v (valuesL l) }
+
 lookupSymName sym l = BM.lookupR sym (symbolsL l)
-lookupSymVal sym l = fromMaybe NoValue $ M.lookup sym (valuesL l) 
-lookupSymMod sym l = BM.lookupR (singleRange sym) (languagesL l) 
+lookupSymVal sym l  = fromMaybe NoValue $ M.lookup sym (valuesL l) 
+lookupSymMod sym l  = BM.lookupR (singleRange sym) (languagesL l) 
+
 addExport sym l = l { exportsL = S.insert sym (exportsL l) }
-getImports l = map fst $ BM.toList $ languagesL l
+
+getImports l  = map fst $ BM.toList $ languagesL l
 isImport im l = BM.member im (languagesL l)
+
+setSymVal sym v l  = l { valuesL = M.insert sym v (valuesL l) }
 exportSymVal sym v = setSymVal sym v . addExport sym
 
 internSym s l = runState (st $ BM.lookup s (symbolsL l)) l 
@@ -80,7 +84,7 @@ importLanguage getImport loadImport imp = merge imp
     merge imp = gets language >>= \l -> ifThenElse (imp`isImport`l) (return False) $ do
       (contents,(comp,recomp)) <- tryCompile False imp
       (l',init) <- if not comp && recomp then fst $< tryCompile True imp else return contents
-      init' <- viewing language_ $ modify (<>l') >> gets (\l -> translate (translateFromTo l' l) init)
+      init' <- viewing language_ $ modify (<>l') >> gets (\l -> translate (translateFromSub l' l) init)
       loadImport init'
       return $ comp || recomp
     tryCompile force imp = do
@@ -90,10 +94,10 @@ importLanguage getImport loadImport imp = merge imp
 
 set2Map s = M.fromAscList (zip (S.toAscList s) (repeat undefined))
 purgeLanguage l = mempty {
-  maxIDL = maxIDL l,
-  symbolsL = BM.filter exportNameP (symbolsL l),
+  maxIDL     = maxIDL l,
+  symbolsL   = BM.filter exportNameP (symbolsL l),
   languagesL = languagesL l,
-  valuesL = vals'
+  valuesL    = vals'
   }
   where Language { exportsL = ex, equivsL = eqs } = l
         vals' = M.map (translate $ mapTranslate eqs) $ M.intersection (valuesL l) (set2Map ex)
