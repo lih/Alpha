@@ -107,7 +107,7 @@ importLanguage loadImport = void . _import
     _import lang = gets language >>= \l -> ifThenElse (lang`isImport`l) (modTime $ languageFile lang) $ do
       node@(time,(l',_)) <- compileLanguage False lang
       times <- mapM _import (getImports l')
-      node <- if time < maximum times then compileLanguage True lang else return node
+      node <- if time < foldl max time times then compileLanguage True lang else return node
       let (time,(l'',init)) = node
           l' = l''{ nameL = lang }
       init' <- viewing language_ $ modify (<>l') >> gets (translateInit init l')
