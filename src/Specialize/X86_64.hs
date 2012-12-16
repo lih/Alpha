@@ -324,7 +324,8 @@ compileOp b d [s]
   | b`elem`[BSet,BSetSX,BNot,BSub] && varSize d<=defSize = withFreeSet $ do
     [v] <- loadArgs [(s,Nothing)]
     readFuture $ do
-      let dest r = maybe (destRegister d) (const $ return r) $ mfilter (not . isActive) $ valSym s
+      let dest r | fromMaybe False (not . isActive) (valSym s) = return r
+                 | otherwise = destRegister d
       r' <- dest $ (id ||| const 0) v 
       (mov r' <|||> movi r') v
       when (argSize s < varSize d) $ case () of

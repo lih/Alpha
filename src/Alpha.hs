@@ -77,12 +77,13 @@ interactive = withInitialContext $ do
 compileProgram (language,entryName) = withInitialContext $ do
   importLanguage (const $ return ()) language
   entrySym <- viewState language_ $ internSym entryName
-  _ <- getAddressComp (outputArch ?settings) entrySym
-  (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
-  top <- gets compTop
-  contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
+  tagIO ("Linking program "++entryName) $ do
+    _ <- getAddressComp (outputArch ?settings) entrySym
+    (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
+    top <- gets compTop
+    contents <- B.concat $< sequence [withForeignPtr ptr $ \p -> unsafePackCStringLen (castPtr p,size)
                                    | ptr <- ptrs | size <- zipWith (-) (tail addrs++[top]) addrs]
-  writeFormat (outputFmt ?settings) entryName contents
+    writeFormat (outputFmt ?settings) entryName contents
 modTime f = modificationTime $< getFileStatus f
 compileLanguage force name = do
   let langFile = languageFile name
@@ -91,28 +92,27 @@ compileLanguage force name = do
   skip <- return (not force) <&&> fileExist langFile <&&> maybe (return True) (langFile `newerThan`) source
   l <- if skip then either (\e -> error $ "Error reading language file "++langFile++": "++e)
                     id $< Ser.decode $< B.readFile langFile else do
-         putStrLn $ "Compiling language "++name++"..."
-         lang <- compileFile $ fromMaybe (error $ "Couldn't find source file for language "++name) source
-         createDirectoryIfMissing True (dropFileName langFile)
-         B.writeFile langFile (Ser.encode lang)
-         return lang
+         tagIO ("Compiling language "++name) $ do
+           lang <- compileFile $ fromMaybe (error $ "Couldn't find source file for language "++name) source
+           createDirectoryIfMissing True (dropFileName langFile)
+           B.writeFile langFile (Ser.encode lang)
+           return lang
   time <- modTime langFile
   return (time,l)
     where compileFile src = withInitialContext $ do
             str <- readFile src
             inits <- mapM compileExpr (parseAlpha src str)
             getting (language_ >>> f_ (purgeLanguage >>> (,inits)))
-importLanguage loadImport = void . _import
-  where 
-    _import lang = gets language >>= \l -> ifThenElse (lang`isImport`l) (modTime $ languageFile lang) $ do
-      node@(time,(l',_)) <- compileLanguage False lang
-      times <- mapM _import (getImports l')
-      node <- if time < foldl max time times then compileLanguage True lang else return node
-      let (time,(l'',init)) = node
-          l' = l''{ nameL = lang }
-      init' <- viewing language_ $ modify (<>l') >> gets (translateInit init l')
-      loadImport init'
-      return time
+importLanguage loadImport = import'
+  where import' lang = gets language >>= \l -> ifThenElse (lang`isImport`l) (modTime $ languageFile lang) $ do
+          node@(time,(l',_)) <- compileLanguage False lang
+          times <- mapM import' (getImports l')
+          node <- if time < foldl max time times then compileLanguage True lang else return node
+          let (time,(l'',init)) = node
+              l' = l''{ nameL = lang }
+          init' <- viewing language_ $ modify (<>l') >> gets (translateInit init l')
+          loadImport init'
+          return time
 compileExpr expr = do
   expr <- doTransform =<< viewing language_ (envCast expr)
   code <- viewing language_ $ compile [] Nothing expr

@@ -3,8 +3,7 @@ module My.Control.Monad (module Control.Monad
                         ,($<),(>$),(>$<)
                         ,(§),(§<),(>§),(>§<)
                          ,(<&&>),(<||>)
-                         ,ifM,findM
-                         ,lift2
+                         ,ifM,findM,prog1
                          ,doNothing) where
 
 import Control.Monad
@@ -31,6 +30,8 @@ a <&&> b = ifM a b (return False)
 a <||> b = ifM a (return True) b
 infixr 3 <&&>
 infixr 3 <||>
+
+prog1 a b = a >>= \x -> b >> return x
 
 findM p l = foldr fun (return Nothing) l
   where fun x ret = ifM (p x) (return $ Just x) ret

@@ -62,7 +62,9 @@ getSymVal s = lift $ getting (vals_ >>> f_ (M.lookup s))
 newVar      = lift $ state createSym
 
 pushInfo        = modifying infoStack_ . (:)
-popInfo         = viewState infoStack_ (\(h:t) -> (h,t))
+popInfo         = viewState infoStack_ (\l -> case l of
+                                           (h:t) -> (h,t)
+                                           [] -> error "Invalid use of Axioms <- or -> outside of a choose expression")
 topInfo         = getting (infoStack_ >>> f_ head)
 withTopInfo i x = pushInfo i >> x >>= \v -> popInfo >> return v
 withInfo f      = popInfo >>= \i -> f i >>= \ret -> pushInfo i >> return ret
