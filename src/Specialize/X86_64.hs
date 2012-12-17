@@ -324,7 +324,7 @@ compileOp b d [s]
   | b`elem`[BSet,BSetSX,BNot,BSub] && varSize d<=defSize = withFreeSet $ do
     [v] <- loadArgs [(s,Nothing)]
     readFuture $ do
-      let dest r | fromMaybe False (not . isActive) (valSym s) = return r
+      let dest r | maybe False (not . isActive) (valSym s) = return r
                  | otherwise = destRegister d
       r' <- dest $ (id ||| const 0) v 
       (mov r' <|||> movi r') v
