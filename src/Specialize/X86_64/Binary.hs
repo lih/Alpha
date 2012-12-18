@@ -119,7 +119,7 @@ setcc r f = tellCode (pre++[0x0f,0x90.|.fi f]++post) >> zxtnd r 1
 
 withSpecial spe f d r (Left n) = fromMaybe (f d r (Left n)) $ spe d r n
 withSpecial _ f d r v = f d r v
-ignoreZero = const $ const $ flip lookup [(0,return ())]
+ignoreZero _ _ = flip lookup [(0,return ())]
 
 shli = withSpecial ignoreZero $ opi (codeFun [(8,(0xC1,1,4))]) undefined
 shri = withSpecial ignoreZero $ opi (codeFun [(8,(0xC1,1,5))]) undefined
@@ -164,7 +164,13 @@ addri = withSpecial ignoreZero addri'
 (addrr,addri',addir)      = commOp [0x03]      [(8,(0x83,1,0)),(32,(0x81,4,0))]
 mulri = withSpecial spe mulri'
   where spe d r n = liftM (shli d r . Left . fi) $ log2n n
-(mulrr,mulri',mulir)       = commOp [0x0F,0xAF] [(8,(0x6B,1,0)),(64,(0x69,8,0))]
+mulir = flip . mulri
+mulrr = op [0x0F,0xAF]
+mulri' d a i = case codeFun [(8,(0x6B,1,undefined)),(32,(0x69,4,undefined))] i of
+  Just (code,_,sz,imm) -> tell (fromBytesN (length pref+sz) (liftM (pref++) imm))
+    where (pre,suf) = argBytes d a Nothing
+          pref = pre++[code]++suf
+  Nothing -> movi rsi i >> mulrr d a rsi
 (bwandrr,bwandri,bwandir) = commOp [0x23]      [(7,(0x83,1,4)),(31,(0x81,4,4))]
 (bworrr,bworri,bworir)    = commOp [0x0b]      [(7,(0x83,1,1)),(31,(0x81,4,1))]
 (bwxorrr,bwxorri,bwxorir) = commOp [0x33]      [(7,(0x83,1,6)),(31,(0x81,4,6))]
