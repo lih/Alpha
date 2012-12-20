@@ -75,9 +75,10 @@ interactive = withInitialContext $ do
   mapM_ (\e -> compileExpr e >> putStr "> " >> hFlush stdout) (parseAlpha "/dev/stdin" str)
   putStrLn "\rGoodbye !"
 compileProgram (language,entryName) = withInitialContext $ do
-  importLanguage (const $ return ()) language
-  entrySym <- viewState language_ $ internSym entryName
-  tagIO ("Linking program "++entryName) $ do
+  langTime <- importLanguage (const $ return ()) language
+  progTime <- modTime entryName
+  when (progTime < langTime) $ tagIO ("Linking program "++entryName) $ do
+    entrySym <- viewState language_ $ internSym entryName
     _ <- getAddressComp (outputArch ?settings) entrySym
     (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
     top <- gets compTop
