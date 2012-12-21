@@ -76,7 +76,7 @@ interactive = withInitialContext $ do
   putStrLn "\rGoodbye !"
 compileProgram (language,entryName) = withInitialContext $ do
   langTime <- importLanguage (const $ return ()) language
-  skipLink <- fileExist entryName <&&> liftM (langTime >) (modTime entryName)
+  skipLink <- fileExist entryName <&&> liftM (langTime <=) (modTime entryName)
   unless skipLink $ tagIO ("Linking program "++entryName) $ do
     entrySym <- viewState language_ $ internSym entryName
     _ <- getAddressComp (outputArch ?settings) entrySym
