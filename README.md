@@ -52,5 +52,5 @@ on how to run Alpha, you may also run the command `alpha -h` which shows you the
 options supported by your version of Alpha (which you can check out by running `alpha
 -v`)
 
-[alpha-lang]: http://www.alpha-lang.info/ "The Alpha Lang Website"
-[alpha-doc]: http://www.alpha-lang.info/way/spec.html "Learn About Alpha"
+[alpha-lang]: http://www.alpha-lang.net/ "The Alpha Lang Website"
+[alpha-doc]: http://www.alpha-lang.net/way/spec.html "Learn About Alpha"
