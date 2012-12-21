@@ -76,8 +76,8 @@ interactive = withInitialContext $ do
   putStrLn "\rGoodbye !"
 compileProgram (language,entryName) = withInitialContext $ do
   langTime <- importLanguage (const $ return ()) language
-  progTime <- modTime entryName
-  when (progTime < langTime) $ tagIO ("Linking program "++entryName) $ do
+  skipLink <- fileExist entryName <&&> liftM (langTime >) (modTime entryName)
+  unless skipLink $ tagIO ("Linking program "++entryName) $ do
     entrySym <- viewState language_ $ internSym entryName
     _ <- getAddressComp (outputArch ?settings) entrySym
     (addrs,ptrs) <- unzip $< sortBy (comparing fst) $< M.elems $< gets compAddresses
@@ -108,7 +108,7 @@ importLanguage loadImport = import'
   where import' lang = gets language >>= \l -> ifThenElse (lang`isImport`l) (modTime $ languageFile lang) $ do
           node@(time,(l',_)) <- compileLanguage False lang
           times <- mapM import' (getImports l')
-          node <- if time < foldl max time times then compileLanguage True lang else return node
+          node <- if any (> time) times then compileLanguage True lang else return node
           let (time,(l'',init)) = node
               l' = l''{ nameL = lang }
           init' <- viewing language_ $ modify (<>l') >> gets (translateInit init l')

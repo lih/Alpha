@@ -6,7 +6,7 @@ description:    Alpha is a programming language that aims at being very simple a
                 being able to climb in abstraction through introspection
                 in the Lisp Way.
 category:       Compiler
-homepage:       http://www.alpha-lang.info/
+homepage:       http://www.alpha-lang.net/
 author:         Marc Coiffier
 maintainer:     marc.coiffier@gmail.com
 stability:      alpha
