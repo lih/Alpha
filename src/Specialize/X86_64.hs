@@ -52,8 +52,9 @@ isActive s = S.member s (actives ?info)
 varSize s = fromMaybe defSize (M.lookup s $ sizes ?info) 
 argSize = maybe defSize varSize . valSym
 verbAddress = let (me,addrs) = envInfo ?info in addrs me
-instrAddress i = let (_,addrs) = branchPos ?info ; (e,s,_) = addrs i in (e,s) 
-instrPast i = let (_,addrs) = branchPos ?info ; (_,_,p) = addrs i in p 
+instrInfo = snd (branchPos ?info)
+instrAddress i = let (e,s,_) = instrInfo i in (e,s) 
+instrPast i = let (_,_,p) = instrInfo i in p 
 thisInstr = fst $ branchPos ?info
 
 frameAddr s = viewState frame_ (withAddr defSize s)
@@ -196,8 +197,9 @@ storeFlags s = withFreeSet $ readFuture $ lift locInfo >>= \(locs,_) -> case R.l
 compile i = ask >>= \info -> do
   let ?info = info 
   (_,BC (e',s',_)) <- listen (storeFlags (branchSym i))  
-  let ?info = info { branchPos = (thisInstr,
-                                  \i -> let (e,s,p) = snd (branchPos ?info) i in (e+e',s+s',p)) }
+  let getPast i | i==thisInstr = let (e,s,p) = instrInfo i in (e+e',s+s',p)
+                | otherwise = instrInfo i
+  let ?info = info { branchPos = (thisInstr,getPast) }
   compile' i
   modifying locations_ (R.filterDom isActive)
   where branchSym (Branch (SymVal Value s) _) = Just s
