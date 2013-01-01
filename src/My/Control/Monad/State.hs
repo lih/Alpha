@@ -3,6 +3,7 @@ module My.Control.Monad.State(module Control.Monad.State
                              ,View(..)
                              ,viewState,viewing,modifying,getting,putting
                              ,fst_,snd_,id_,f_,on_
+                             ,(>>>),(<<<)
                              ,withState) where
 
 import Prelude hiding ((.),id)
@@ -28,4 +29,3 @@ putting f v                 = modifying f (const v)
 f `on_` View (v,v') = \x -> v' (f (v x)) x
 
 withState s mx = get >>= \v -> put s >> mx >>= \x -> put v >> return x
-

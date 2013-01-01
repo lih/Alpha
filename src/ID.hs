@@ -1,7 +1,8 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module ID where
 
 newtype ID = ID Int
-           deriving (Ord,Eq)
+           deriving (Ord,Eq,Enum,Num)
 newtype Range a = Range (a,a)
 
 singleRange i = Range (i,i)
@@ -14,17 +15,6 @@ instance Ord a => Ord (Range a) where
     | b'<=a = GT 
     | otherwise = EQ
 
-instance Enum ID where
-  toEnum = ID
-  fromEnum (ID i) = i
 instance Show ID where
   show (ID i) = "x"++show i
-instance Num ID where
-  ID a + ID b = ID (a+b)
-  ID a - ID b = ID (a-b)
-  ID a * ID b = ID (a*b)
-  negate = undefined
-  abs = undefined
-  signum = undefined
-  fromInteger n = ID $ fromInteger n
 

@@ -15,7 +15,7 @@ install: all
 replaceExpr:='s/\bElf\b/Format/'
 
 find:
-	egrep -Rn 'swap' src
+	egrep -Rn 'newtype' src
 replace:
 	find src -name '*.hs' | xargs sed -r $(replaceExpr)'g' -i
 try-replace:
