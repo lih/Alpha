@@ -24,6 +24,9 @@ newVar = lift (state createSym)
 intercept m = censor (const mempty) $ listen m
 m !- s = fromMaybe s $ M.lookup s m
 addLocals ls = modifying locals_ $ \m -> foldr (uncurry M.insert) m ls 
+globVal t s locs = case M.lookup s locs of
+  Just s' -> SymVal t s'
+  Nothing -> SymVal GValue s
 branch (IntVal (fromInteger -> n)) alts | n>=0 && n<length (tail alts) = goto (tail alts!!n)
                                         | otherwise = goto (head alts)
 branch v alts = tell [Branch v alts] >> return NullVal
@@ -44,9 +47,7 @@ compile args ret expr = runCompileT (compile' (fmap bindSym ret) expr)
 compile' dest (Symbol sym) = do
   name <- lookupName sym
   locs <- gets locals
-  let def = case M.lookup sym locs of
-        Just sym' -> SymVal Value sym'
-        Nothing -> SymVal GValue sym
+  let def = globVal Value sym locs
       val = fromMaybe def (IntVal $< (readConstant =<< name))
   case dest of
     Just v | v/=sym -> tell [set v val] >> return def
@@ -125,9 +126,7 @@ compileAxiom XRestart _ [] = withInfo $ \(start,_,_,_) -> goto start
 compileAxiom XRestart _ [arg] = withInfo $ \(_,alts,_,_) ->
   compile' Nothing arg ?>>= \v -> branch v alts
 
-compileAxiom XAddr dest [Symbol s] = do
-  locs <- gets locals
-  compileValue dest (SymVal (if s`M.member`locs then Address else GValue) s)
+compileAxiom XAddr dest [Symbol s] = gets locals >>= compileValue dest . globVal Address s
 compileAxiom XSize dest [Symbol s] = compileValue dest (SymVal Size s)
 
 compileAxiom XID dest [Symbol s] = compileValue dest (SymVal SymID s)
