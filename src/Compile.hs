@@ -113,7 +113,7 @@ compileAxiom XChoose dest (cond:forms) = do
     start <- getPos
     condVal <- compile' Nothing cond
     branch condVal alts
-    let compileAlt alt = getPos ->> (compile' (Just v) alt ?>> goto end)
+    let compileAlt alt = saving locals_ $ getPos ->> (compile' (Just v) alt ?>> goto end)
     alts <- mapM compileAlt forms
     end <- getPos
     popInfo

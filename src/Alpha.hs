@@ -223,7 +223,7 @@ instance MonadState Context IO where
   get = readIORef contextRef
   put = writeIORef contextRef
 
-withInitialContext = withState initialContext
+withInitialContext = swapping id_ initialContext
 initialContext = C ?settings lang jitA M.empty (fromIntegral entry) Nothing
   where (lang,jitA) = execState (mapM_ st initialBindings) (mempty,M.empty)
           where st (s,v) = do

@@ -1,11 +1,14 @@
 {-# LANGUAGE TupleSections, NoMonomorphismRestriction #-}
 module My.Control.Monad.State(module Control.Monad.State
                              ,View(..)
-                             ,viewState,viewing,modifying,getting,putting
+                             ,viewState
+                             ,viewing,modifying,getting,putting
+                             ,swappingWith,swapping
+                             ,saving
                              ,fst_,snd_,id_,f_,on_
-                             ,(>>>),(<<<)
-                             ,withState) where
+                             ,(>>>),(<<<)) where
 
+import My.Control.Monad
 import Prelude hiding ((.),id)
 import Control.Monad.State hiding (withState)
 import Control.Category
@@ -28,4 +31,9 @@ putting f v                 = modifying f (const v)
 
 f `on_` View (v,v') = \x -> v' (f (v x)) x
 
-withState s mx = get >>= \v -> put s >> mx >>= \x -> put v >> return x
+saving v m = getting v >>= \x -> m ->> putting v x
+
+swappingWith v f m = saving v (modifying v f >> m)
+swapping v s = swappingWith v (const s)
+
+
