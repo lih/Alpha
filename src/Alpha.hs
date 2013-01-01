@@ -170,7 +170,8 @@ initialBindings = [(n,Left $ Builtin b) | (b,n) <- bNames] ++ [
   ("alpha/lang"          , Right $ exportAlpha callStub0 alpha_printLang),
   ("alpha/print-OK"      , Right $ exportAlpha callStub0 alpha_printOK),    
   ("alpha/print-num"     , Right $ exportAlpha callStub1 alpha_printNum),
-  ("alpha/print-expr"    , Right $ exportAlpha callStub1 alpha_printExpr)
+  ("alpha/print-expr"    , Right $ exportAlpha callStub1 alpha_printExpr),
+  ("alpha/print-val"     , Right $ exportAlpha callStub1 alpha_printVal)
   ]
 
 #define str(x) #x
@@ -190,6 +191,8 @@ ALPHA_EXPORT(numSym,Int -> IO ID) = viewState language_ . internSym . show
 
 ALPHA_EXPORT(allocate,Int -> IO (Ptr())) = mallocBytes
 ALPHA_EXPORT(free,Ptr() -> IO ()) = free
+
+ALPHA_EXPORT(printVal,ID -> IO ()) sym = gets (language >>> lookupSymVal sym) >>= print
 
 ALPHA_EXPORT(printHelp,IO()) = printHelp
 ALPHA_EXPORT(printOK,IO()) = putStrLn "OK"
