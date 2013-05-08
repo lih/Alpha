@@ -1,27 +1,19 @@
-{-# LANGUAGE CPP #-}
-module Specialize.Architecture(Architecture(..)
-                              ,arch_host,arch_x86_64,architectures
-                              ,execStub,initStub,callStub0,callStub1) where
+{-# LANGUAGE ImplicitParams, Rank2Types #-}
+module Specialize.Architecture where
 
-import Specialize.Types
-import qualified Specialize.X86_64 as X86_64
-import System.IO.Unsafe (unsafePerformIO)
-#if x86_64_HOST_ARCH
-import qualified Specialize.X86_64 as Host
-#else
-#error "Sorry, your architecture is not supported by Alpha just yet :-( "
-#endif
+import PCode
+import Specialize.Monad
+import Specialize.Memory
+import Specialize.Info
 
+data Architecture = Arch {
+  archName         :: String,
+  archDefaultSize  :: Int,
+  archInitials     :: [BindVar] -> Maybe BindVar -> (MemState,FutureState),
+  archCompileInstr :: ( ?info :: Info ) => Instruction -> Specialize ()
+  }
 instance Eq Architecture where
   a == a' = archName a == archName a'
 instance Show Architecture where
   show a = "#<Arch:"++archName a++">"
 
-architectures = [arch_host,arch_x86_64]
-arch_host = Host.arch { archName = "host" }
-arch_x86_64 = X86_64.arch
-
-execStub = unsafePerformIO Host.execStub
-initStub = unsafePerformIO Host.initStub
-callStub0 = unsafePerformIO . Host.callStub0
-callStub1 = unsafePerformIO . Host.callStub1

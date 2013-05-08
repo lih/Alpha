@@ -1,6 +1,6 @@
 module Syntax where
 
-import Prelude hiding (foldl)
+import Prelude hiding (foldl,concatMap,elem)
 import Data.List (intercalate)
 import Data.Foldable
 import Data.Traversable
@@ -24,3 +24,8 @@ instance Show a => Show (Syntax a) where
   show (Symbol s) = show s
   show (Group l) = "[" ++ intercalate " " (map show l) ++ "]"
 
+newtype SynStr = SynStr String
+instance Show SynStr where
+  show (SynStr s) = concatMap trans s
+    where trans c | c`elem`".:,;\\\n \t(){}[]" = '\\':[c]
+                  | otherwise = [c]

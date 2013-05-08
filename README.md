@@ -20,9 +20,9 @@ commands (in the project root directory) to compile the compiler:
     cabal configure --user
     cabal install
 
-Note: Alpha uses some recent version of certain Haskell libraries and might not
+Note: Alpha uses the most recent version of some Haskell libraries and might not
 compile on old or out-of-date systems. Unfortunately, the only way to fix that is to
-update your system, for there are enough problems as it is trying to write the
+update your system, for I encounter enough problems already just writing the
 compiler without having to deal with backward compatibility. I hope you will
 understand.
 
@@ -47,7 +47,7 @@ matters. Implementing the P part of a REPL can (and should) be done with the lan
 and will not be integrated into the compiler.
 
 For more information about exactly what languages and symbols are, you might want to
-check out the [Alpha Lang Documentation][alpha-doc]. If you want more immediate help
+check out the [Alpha Language Documentation][alpha-doc]. If you want more immediate help
 on how to run Alpha, you may also run the command `alpha -h` which shows you the
 options supported by your version of Alpha (which you can check out by running `alpha
 -v`)

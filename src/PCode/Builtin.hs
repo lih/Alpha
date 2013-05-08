@@ -1,15 +1,23 @@
+-- |A module describing Alpha's primitives
 module PCode.Builtin where
 
+-- |An enumeration of all handled Alpha primitives
 data Builtin = BAdd | BMul | BSub | BDiv | BMod 
-             | BAnd | BOr | BXor | BNot
              | BLowerEq | BLowerThan | BGreaterEq | BGreaterThan 
              | BEqual | BNotEqual
-             | BCall
+             | BAnd | BOr | BXor | BNot
              | BSet | BSetSX
-             deriving (Show,Eq)
+             deriving (Show,Eq,Bounded,Enum)
 
-isBinOp b = b`elem`[BCall,BSet,BSetSX,BNot]
+-- |Is the builtin for a binary operation ?
+isBinOp :: Builtin -> Bool
+-- |Is it a comparison operation ?
+isCompare :: Builtin -> Bool
+isBinOp b = b`elem`[BAdd,BSub,BMul,BDiv,BMod,BAnd,BOr,BXor]
+isCompare b = b`elem`[BLowerEq,BLowerThan,BGreaterThan,BGreaterEq,BEqual,BNotEqual]
 
+-- |A list of the builtins' names
+bNames :: [(Builtin, String)]
 bNames = [(BAdd,"+"),(BMul,"*"),(BSub,"-"),(BDiv,"/"),(BMod,"%"),
           (BLowerThan,"<"),(BGreaterThan,">"),(BLowerEq,"<="),(BGreaterEq,">="),
           (BEqual,"=="),(BNotEqual,"<>"),

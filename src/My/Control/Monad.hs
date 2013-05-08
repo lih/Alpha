@@ -1,41 +1,50 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module My.Control.Monad (module Control.Monad
-                        ,($<),(>$),(>$<)
-                        ,(§),(§<),(>§),(>§<)
-                         ,(->>)
-                         ,(<&&>),(<||>)
-                         ,ifM,findM,prog1
-                         ,doNothing) where
+-- |A module defining some additional utilities from Control.Monad
+module My.Control.Monad (
+  module Control.Monad, module Control.Applicative,
+  -- * The flipped equivalents to the @$@ and @<$>@ operators
+  (§),(<§>),
+   -- * Returning the first argument
+   prog1,(->>=),
+   -- * Boolean monadic operators
+   (<&&>),(<||>),
+   -- * If and find with boolean monadic arguments
+   ifM,whenM,findM,
+   -- * Misc
+   doNothing,pairM) where
 
 import Control.Monad
-import Control.Monad.Trans
+import Control.Applicative
 
-($<)  :: Monad m => (a -> b) -> m a -> m b
-(>$)  :: Monad m => m (a -> b) -> a -> m b
-(>$<) :: Monad m => m (a -> b) -> m a -> m b
-($<) = liftM
-mf >$ x = mf >>= \f -> return (f x)
-(>$<) = ap
+-- |Flipped equivalent to '$' (@f $ x@ is equivalent to @x § f@) 
+(§) :: a -> (a -> b) -> b
+(§) = flip ($) 
+-- |Flipped equivalent to '<$>'
+(<§>) :: Applicative f => f a -> (a -> b) -> f b
+(<§>) = flip (<$>)
 
-lift2 = lift . lift
+-- |The Haskell equivalent to Lisp's @prog1@. @prog1 a b@ executes @a@ and @b@
+-- in order (as with '>>=') then returns the value of @a@
+prog1 a b = a >>= \x -> b x >> return x
+-- |Infix equivalent to 'prog1'
+(->>=) = prog1
 
-infixr 0 $<,>$,>$<
-
-(§) = flip ($)
-(§<) = flip (>$)
-(>§) = flip ($<)
-(>§<) = flip (>$<)
-
-ifM b th el = b >>= \b -> if b then th else el
+-- |Monadic '&&' with short-circuit evaluation (left-biased)
 a <&&> b = ifM a b (return False)
+-- |Monadic '||' with short-circuit evaluation (left-biased)
 a <||> b = ifM a (return True) b
 infixr 3 <&&>
 infixr 3 <||>
 
-prog1 a b = a >>= \x -> b >> return x
-(->>) = prog1
-
+-- |Monadic 'if' function
+ifM b th el = b >>= \b' -> if b' then th else el
+-- |'when' with monadic condition
+whenM b m = ifM b m (return ())
+-- |Monadic 'find' function
 findM p l = foldr fun (return Nothing) l
   where fun x ret = ifM (p x) (return $ Just x) ret
 
+-- |The name says it all
 doNothing = return ()
+-- |Constructs a pair from two monadic values
+pairM = liftM2 (,)
