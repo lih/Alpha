@@ -19,12 +19,17 @@ source-repository head
   type: git
   location: git://github.com/lih/Alpha.git
 
+library
+  hs-source-dirs: lib-src
+  exposed-modules: Compile Compile.Monad Context.Language ID PCode PCode.Builtin PCode.Instruction PCode.Value Context.Types Context My.Control.Monad My.Control.Monad.Future My.Control.Monad.WriterAcc My.Data.Either My.Data.List My.Data.Relation My.Data.Tree Misc  Serialize Specialize Specialize.Architecture Specialize.BinCode Specialize.Frame Specialize.Info Specialize.Memory Specialize.Monad Syntax Syntax.Parse Translate
+
 executable alpha
   build-depends:  base<=4.6.1.0, bytestring, mtl, containers, array, cereal, bimap, unix, views, readline, filepath, directory, parsec, bindings-posix, safe
   main-is:        Main.hs
-  other-modules:  Architectures Compile Compile.Monad Context Context.Language Context.Types Format ID My.Control.Monad My.Control.Monad.Future My.Control.Monad.WriterAcc My.Data.Either My.Data.List My.Data.Relation My.Data.Tree Misc Settings PCode PCode.Builtin PCode.Instruction PCode.Value Serialize Specialize Specialize.Architecture Specialize.BinCode Specialize.Frame Specialize.Info Specialize.Memory Specialize.Monad Specialize.X86_64 Specialize.X86_64.Binary Syntax Syntax.Parse Translate
+  other-modules:  Architectures Format Settings Specialize.X86_64 Specialize.X86_64.Binary
   ghc-options:    -pgmP cpphs -optP --hashes -optP --cpp -fwarn-dodgy-foreign-imports -fwarn-name-shadowing -Werror
-  hs-source-dirs: src
-  c-sources:      src/formats.c
+  hs-source-dirs: alpha-src lib-src
+  c-sources:      alpha-src/formats.c
 
+  
 
