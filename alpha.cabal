@@ -24,7 +24,7 @@ library
   exposed-modules: Compile Compile.Monad Context.Language ID PCode PCode.Builtin PCode.Instruction PCode.Value Context.Types Context My.Control.Monad My.Control.Monad.Future My.Control.Monad.WriterAcc My.Data.Either My.Data.List My.Data.Relation My.Data.Tree Misc  Serialize Specialize Specialize.Architecture Specialize.BinCode Specialize.Frame Specialize.Info Specialize.Memory Specialize.Monad Syntax Syntax.Parse Translate
 
 executable alpha
-  build-depends:  base<=4.6.1.0, bytestring, mtl, containers, array, cereal, bimap, unix, views, readline, filepath, directory, parsec, bindings-posix, safe
+  build-depends:  base<=4.8.0.0, bytestring, mtl, containers, array, cereal, bimap, unix, views, readline, filepath, directory, parsec, bindings-posix, safe
   main-is:        Main.hs
   other-modules:  Architectures Format Settings Specialize.X86_64 Specialize.X86_64.Binary
   ghc-options:    -pgmP cpphs -optP --hashes -optP --cpp -fwarn-dodgy-foreign-imports -fwarn-name-shadowing -Werror
